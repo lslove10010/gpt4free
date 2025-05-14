@@ -1,7 +1,7 @@
-FROM python:3.10
+FROM python:3.13
 WORKDIR /app
 COPY . .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements-slim.txt
 EXPOSE 8080
 CMD ["python", "-m", "g4f", "--port", "8080", "--debug"]
 USER 10014

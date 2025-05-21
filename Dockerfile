@@ -10,7 +10,11 @@ COPY requirements.txt .
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-EXPOSE 8080
+# 创建 /tmp/har_and_cookies 目录并建立软链接
+RUN mkdir -p /tmp/har_and_cookies && ln -s /tmp/har_and_cookies /app/har_and_cookies
 
 USER 10014
+
+EXPOSE 8080
+
 CMD ["sh", "-c", "python -m g4f --port ${PORT:-8080} --debug"]

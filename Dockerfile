@@ -1,5 +1,7 @@
 # 选择更小、更安全的基础镜像
-FROM python:3.13
+
+FROM python:3.10-alpine
+
 
 WORKDIR /app
 

@@ -10,8 +10,11 @@ COPY requirements.txt .
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# 确保 har_and_cookies 目录存在并有写权限
-RUN mkdir -p /tmp/har_and_cookies && chmod -R 777 /tmp/har_and_cookies && ln -s /tmp/har_and_cookies /app/har_and_cookies
+# 解决 har_and_cookies 目录问题
+RUN mkdir -p /tmp/har_and_cookies && \
+    touch /tmp/har_and_cookies/.gui_cache && \
+    chmod -R 777 /tmp/har_and_cookies && \
+    ln -s /tmp/har_and_cookies /app/har_and_cookies
 
 USER 10014
 

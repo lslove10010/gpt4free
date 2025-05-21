@@ -19,9 +19,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-slim.txt
 
 # 配置非root用户
-RUN useradd -m -u 1001 appuser && \
+RUN useradd -m -u 10014 appuser && \
     chown -R appuser:appuser /usr/src/app /app
-USER appuser
+USER 10014
 
 EXPOSE 8080
 CMD ["sh", "-c", "python -m g4f --port ${PORT:-8080} --debug"]

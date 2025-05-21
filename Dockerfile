@@ -16,5 +16,5 @@ RUN mkdir -p /tmp/har_and_cookies && \
     ln -s /tmp/har_and_cookies /home/choreouser/har_and_cookies
 
 EXPOSE 8080
-
+USER 10014
 CMD ["sh", "-c", "python -m g4f --port ${PORT:-8080} --debug"]

@@ -1,14 +1,16 @@
-FROM python:3.10-slim
+# 选择更小、更安全的基础镜像
+FROM python:3.10-alpine
 
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
-    rm -rf /var/lib/apt/lists/*
+# 使用 apk 添加 git 并清理缓存
+RUN apk add --no-cache git
 
 COPY requirements.txt .
 
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# 使用单个 RUN 语句减少镜像层
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
 EXPOSE 8080
 

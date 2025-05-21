@@ -10,8 +10,8 @@ COPY requirements.txt .
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# 创建 /tmp/har_and_cookies 目录并建立软链接
-RUN mkdir -p /tmp/har_and_cookies && ln -s /tmp/har_and_cookies /app/har_and_cookies
+# 确保 har_and_cookies 目录存在并有写权限
+RUN mkdir -p /tmp/har_and_cookies && chmod -R 777 /tmp/har_and_cookies && ln -s /tmp/har_and_cookies /app/har_and_cookies
 
 USER 10014
 

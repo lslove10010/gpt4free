@@ -1,9 +1,6 @@
-FROM python:3.10-slim
+FROM python:3.13
 
 WORKDIR /app
-
-# 安装 Git
-RUN apt-get update && apt-get install -y git
 
 # 安装依赖
 COPY requirements.txt .

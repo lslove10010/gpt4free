@@ -1,22 +1,19 @@
 FROM python:3.10-slim
 
-WORKDIR /app
+WORKDIR /home/choreouser
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt ./
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# 解决 har_and_cookies 目录问题
 RUN mkdir -p /tmp/har_and_cookies && \
-    touch /tmp/har_and_cookies/.gui_cache && \
     chmod -R 777 /tmp/har_and_cookies && \
-    ln -s /tmp/har_and_cookies /app/har_and_cookies
-
-USER 10014
+    touch /tmp/har_and_cookies/.gui_cache && \
+    ln -s /tmp/har_and_cookies /home/choreouser/har_and_cookies
 
 EXPOSE 8080
 

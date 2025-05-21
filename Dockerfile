@@ -1,11 +1,14 @@
-FROM python:3.13
+FROM python:3.10-slim
 
 WORKDIR /app
 
-# 安装依赖
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 EXPOSE 8080
 

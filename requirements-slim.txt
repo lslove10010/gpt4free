@@ -1,3 +1,4 @@
+git+https://github.com/xtekky/gpt4free.git
 requests
 pycryptodome
 curl_cffi>=0.6.2

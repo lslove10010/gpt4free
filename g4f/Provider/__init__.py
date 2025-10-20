@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 from ..providers.types          import BaseProvider, ProviderType
-from ..providers.retry_provider import RetryProvider, IterListProvider
+from ..providers.retry_provider import RetryProvider, IterListProvider, RotatedProvider
 from ..providers.base_provider  import AsyncProvider, AsyncGeneratorProvider
 from ..providers.create_images  import CreateImagesProvider
 from .. import debug
 
-from .needs_auth       import *
-from .needs_auth.hf    import HuggingFace, HuggingChat, HuggingFaceAPI, HuggingFaceInference, HuggingFaceMedia
+from .needs_auth import *
+from .needs_auth.hf import HuggingFace, HuggingChat, HuggingFaceAPI, HuggingFaceInference, HuggingFaceMedia
 try:
     from .needs_auth.mini_max import HailuoAI, MiniMax
 except ImportError as e:
     debug.error("MiniMax providers not loaded:", e)
-
-from .template         import OpenaiTemplate, BackendApi
-from .har              import HarProvider
 try:
     from .not_working import *
 except ImportError as e:
@@ -31,31 +28,40 @@ try:
     from .audio import *
 except ImportError as e:
     debug.error("Audio providers not loaded:", e)
+try:
+    from .search import *
+except ImportError as e:
+    debug.error("Search providers not loaded:", e)
 
-from .deprecated.ARTA      import ARTA
-from .Blackbox             import Blackbox
+from .template import OpenaiTemplate, BackendApi
+from .qwen.QwenCode import QwenCode
+from .deprecated.ARTA import ARTA
+from .deprecated.Blackbox import Blackbox
+from .deprecated.DuckDuckGo import DuckDuckGo
+from .deprecated.Kimi import Kimi
+from .deprecated.PerplexityLabs import PerplexityLabs
+
+from .ApiAirforce          import ApiAirforce
 from .Chatai               import Chatai
 from .Cloudflare           import Cloudflare
 from .Copilot              import Copilot
-from .DeepInfraChat        import DeepInfraChat
-from .DuckDuckGo           import DuckDuckGo
-from .Free2GPT             import Free2GPT
-from .ImageLabs            import ImageLabs
+from .DeepInfra            import DeepInfra
+from .EasyChat             import EasyChat
+from .GLM                  import GLM
 from .LambdaChat           import LambdaChat
-from .LegacyLMArena        import LegacyLMArena
-from .OIVSCodeSer2         import OIVSCodeSer2
-from .OIVSCodeSer0501      import OIVSCodeSer0501
+from .Mintlify             import Mintlify
+from .OIVSCodeSer          import OIVSCodeSer2, OIVSCodeSer0501
 from .OperaAria            import OperaAria
-from .PenguinAI            import PenguinAI
-from .PerplexityLabs       import PerplexityLabs
+from .Perplexity           import Perplexity
 from .PollinationsAI       import PollinationsAI
 from .PollinationsImage    import PollinationsImage
 from .Startnest            import Startnest
+from .Qwen                 import Qwen
+from .StringableInference  import StringableInference
 from .TeachAnything        import TeachAnything
-from .Together             import Together
 from .WeWordle             import WeWordle
-from .YouTube              import YouTube
 from .Yqcloud              import Yqcloud
+from .Yupp                 import Yupp
 
 import sys
 

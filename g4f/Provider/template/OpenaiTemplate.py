@@ -5,12 +5,13 @@ import requests
 from ..helper import filter_none, format_media_prompt
 from ..base_provider import AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
 from ...typing import Union, AsyncResult, Messages, MediaListType
-from ...requests import StreamSession, StreamResponse, raise_for_status, see_stream
+from ...requests import StreamSession, StreamResponse, raise_for_status, sse_stream
 from ...image import use_aspect_ratio
 from ...image.copy_images import save_response_media
-from ...providers.response import FinishReason, ToolCalls, Usage, ImageResponse, ProviderInfo, AudioResponse, Reasoning
+from ...providers.response import *
 from ...tools.media import render_messages
-from ...errors import MissingAuthError, ResponseError
+from ...tools.run_tools import AuthManager
+from ...errors import MissingAuthError
 from ... import debug
 
 class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin):
@@ -22,7 +23,12 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
     default_model = ""
     fallback_models = []
     sort_models = True
+    models_needs_auth = False
+    use_model_names = False
     ssl = None
+    add_user = True
+    use_image_size = False
+    max_tokens: int = None
 
     @classmethod
     def get_models(cls, api_key: str = None, api_base: str = None) -> list[str]:
@@ -33,21 +39,30 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
                     api_base = cls.api_base
                 if api_key is None and cls.api_key is not None:
                     api_key = cls.api_key
-                if api_key is not None:
-                    headers["authorization"] = f"Bearer {api_key}"
-                response = requests.get(f"{api_base}/models", headers=headers, verify=cls.ssl)
+                if not api_key:
+                    api_key = AuthManager.load_api_key(cls)
+                if cls.models_needs_auth and not api_key:
+                    raise MissingAuthError('Add a "api_key"')
+                response = requests.get(f"{api_base}/models", headers=cls.get_headers(False, api_key), verify=cls.ssl)
                 raise_for_status(response)
                 data = response.json()
-                data = data.get("data") if isinstance(data, dict) else data
-                cls.image_models = [model.get("id") for model in data if model.get("image")]
+                data = data.get("data", data.get("models")) if isinstance(data, dict) else data
+                if (not cls.needs_auth or cls.models_needs_auth or api_key) and data:
+                    cls.live += 1
+                cls.image_models = [model.get("name") if cls.use_model_names else model.get("id", model.get("name")) for model in data if model.get("image") or model.get("type") == "image" or model.get("supports_images")]
                 cls.vision_models = cls.vision_models.copy()
-                cls.vision_models += [model.get("id") for model in data if model.get("vision")]
-                cls.models = [model.get("id") for model in data]
+                cls.vision_models += [model.get("name") if cls.use_model_names else model.get("id", model.get("name")) for model in data if model.get("vision")]
+                cls.models = [model.get("name") if cls.use_model_names else model.get("id", model.get("name")) for model in data]
+                cls.models_count = {model.get("name") if cls.use_model_names else model.get("id", model.get("name")): len(model.get("providers", [])) for model in data if len(model.get("providers", [])) > 1}
                 if cls.sort_models:
                     cls.models.sort()
+            except MissingAuthError:
+                raise
             except Exception as e:
-                debug.error(e)
-                return cls.fallback_models
+                if cls.fallback_models:
+                    debug.error(e)
+                    return cls.fallback_models
+                raise e
         return cls.models
 
     @classmethod
@@ -57,6 +72,7 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
         messages: Messages,
         proxy: str = None,
         timeout: int = 120,
+        conversation: JsonConversation = None,
         media: MediaListType = None,
         api_key: str = None,
         api_endpoint: str = None,
@@ -67,10 +83,11 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
         stop: Union[str, list[str]] = None,
         stream: bool = None,
         prompt: str = None,
+        user: str = None,
         headers: dict = None,
         impersonate: str = None,
         download_media: bool = True,
-        extra_parameters: list[str] = ["tools", "parallel_tool_calls", "tool_choice", "reasoning_effort", "logit_bias", "modalities", "audio"],
+        extra_parameters: list[str] = ["tools", "parallel_tool_calls", "tool_choice", "reasoning_effort", "logit_bias", "modalities", "audio", "stream_options", "include_reasoning", "response_format", "max_completion_tokens", "reasoning_effort", "search_settings"],
         extra_body: dict = None,
         **kwargs
     ) -> AsyncResult:
@@ -91,11 +108,10 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
             # Proxy for image generation feature
             if model and model in cls.image_models:
                 prompt = format_media_prompt(messages, prompt)
-                data = {
-                    "prompt": prompt,
-                    "model": model,
-                    **use_aspect_ratio({"width": kwargs.get("width"), "height": kwargs.get("height")}, kwargs.get("aspect_ratio", None))
-                }
+                size = use_aspect_ratio({"width": kwargs.get("width"), "height": kwargs.get("height")}, kwargs.get("aspect_ratio", None))
+                size = {"size": f"{size['width']}x{size['height']}", **size} if cls.use_image_size and "width" in size and "height" in size else size
+                data = {"prompt": prompt, "model": model, **size}
+
                 # Handle media if provided
                 if media is not None:
                     data["image_url"] = next(iter([data for data, _ in media if data and isinstance(data, str) and data.startswith("http://") or data.startswith("https://")]), None)
@@ -109,6 +125,8 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
                     yield ImageResponse([image["url"] for image in data["data"]], prompt)
                 return
 
+            if stream or stream is None:
+                kwargs.setdefault("stream_options", {"include_usage": True})
             extra_parameters = {key: kwargs[key] for key in extra_parameters if key in kwargs}
             if extra_body is None:
                 extra_body = {}
@@ -116,17 +134,21 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
                 messages=list(render_messages(messages, media)),
                 model=model,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_tokens=max_tokens if max_tokens is not None else cls.max_tokens,
                 top_p=top_p,
                 stop=stop,
                 stream="audio" not in extra_parameters if stream is None else stream,
+                user=user if cls.add_user else None,
+                conversation=conversation.get_dict() if conversation else None,
                 **extra_parameters,
                 **extra_body
             )
             if api_endpoint is None:
-                api_endpoint = cls.api_endpoint
+                if api_endpoint is None:
+                    api_endpoint = cls.api_endpoint
                 if api_endpoint is None:
                     api_endpoint = f"{api_base.rstrip('/')}/chat/completions"
+            yield JsonRequest.from_dict(data)
             async with session.post(api_endpoint, json=data, ssl=cls.ssl) as response:
                 async for chunk in read_response(response, stream, prompt, cls.get_dict(), download_media):
                     yield chunk
@@ -143,12 +165,11 @@ class OpenaiTemplate(AsyncGeneratorProvider, ProviderModelMixin, RaiseErrorMixin
             **({} if headers is None else headers)
         }
     
-async def read_response(response: StreamResponse, stream: bool, prompt: str, provider_info: dict, download_media: bool):
+async def read_response(response: StreamResponse, stream: bool, prompt: str, provider_info: dict, download_media: bool) -> AsyncResult:
     content_type = response.headers.get("content-type", "text/event-stream" if stream else "application/json")
-    if content_type.startswith("text/plain"):
-        yield await response.text()
-    elif content_type.startswith("application/json"):
+    if content_type.startswith("application/json"):
         data = await response.json()
+        yield JsonResponse.from_dict(data)
         OpenaiTemplate.raise_error(data, response.status)
         await raise_for_status(response)
         model = data.get("model")
@@ -156,6 +177,8 @@ async def read_response(response: StreamResponse, stream: bool, prompt: str, pro
             yield ProviderInfo(**provider_info, model=model)
         if "usage" in data:
             yield Usage(**data["usage"])
+        if "conversation" in data:
+            yield JsonConversation.from_dict(data["conversation"])
         if "choices" in data:
             choice = next(iter(data["choices"]), None)
             message = choice.get("message", {})
@@ -163,6 +186,10 @@ async def read_response(response: StreamResponse, stream: bool, prompt: str, pro
                 yield message["content"].strip()
             if "tool_calls" in message:
                 yield ToolCalls(message["tool_calls"])
+            if choice:
+                reasoning_content = choice.get("delta", {}).get("reasoning_content", choice.get("delta", {}).get("reasoning"))
+                if reasoning_content:
+                    yield Reasoning(reasoning_content, status="")
             audio = message.get("audio", {})
             if "data" in audio:
                 if download_media:
@@ -178,37 +205,38 @@ async def read_response(response: StreamResponse, stream: bool, prompt: str, pro
         reasoning = False
         first = True
         model_returned = False
-        async for data in see_stream(response):
+        async for data in sse_stream(response):
+            yield JsonResponse.from_dict(data)
             OpenaiTemplate.raise_error(data)
             model = data.get("model")
             if not model_returned and model:
                 yield ProviderInfo(**provider_info, model=model)
                 model_returned = True
             choice = next(iter(data["choices"]), None)
-            if not choice:
-                continue
-            if "content" in choice["delta"] and choice["delta"]["content"]:
-                delta = choice["delta"]["content"]
-                if first:
-                    delta = delta.lstrip()
-                if delta:
-                    first = False
-                    if reasoning:
-                        yield Reasoning(status="")
-                        reasoning = False
-                    yield delta
-            tool_calls = choice.get("delta", {}).get("tool_calls")
-            if tool_calls:
-                yield ToolCalls(choice["delta"]["tool_calls"])
-            reasoning_content = choice.get("delta", {}).get("reasoning_content")
-            if reasoning_content:
-                reasoning = True
-                yield Reasoning(reasoning_content)
+            if choice:
+                content = choice.get("delta", {}).get("content")
+                if content:
+                    if first:
+                        content = content.lstrip()
+                    if content:
+                        first = False
+                        if reasoning:
+                            yield Reasoning(status="")
+                            reasoning = False
+                        yield content
+                tool_calls = choice.get("delta", {}).get("tool_calls")
+                if tool_calls:
+                    yield ToolCalls(tool_calls)
+                reasoning_content = choice.get("delta", {}).get("reasoning_content", choice.get("delta", {}).get("reasoning"))
+                if reasoning_content:
+                    reasoning = True
+                    yield Reasoning(reasoning_content)
             if "usage" in data and data["usage"]:
                 yield Usage(**data["usage"])
+            if "conversation" in data and data["conversation"]:
+                yield JsonConversation.from_dict(data["conversation"])
             if choice and choice.get("finish_reason") is not None:
                 yield FinishReason(choice["finish_reason"])
-                break
     else:
         await raise_for_status(response)
         async for chunk in save_response_media(response, prompt, [model]):

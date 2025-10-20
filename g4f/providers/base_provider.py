@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-
+import random
 from asyncio import AbstractEventLoop
 from concurrent.futures import ThreadPoolExecutor
 from abc import abstractmethod
@@ -21,6 +21,8 @@ from .response import BaseConversation, AuthResult
 from .helper import concat_chunks
 from ..cookies import get_cookies_dir
 from ..errors import ModelNotFoundError, ResponseError, MissingAuthError, NoValidHarFileError, PaymentRequiredError, CloudflareError
+from ..tools.auth import AuthManager
+from .. import debug
 
 SAFE_PARAMETERS = [
     "model", "messages", "stream", "timeout",
@@ -283,6 +285,7 @@ class AsyncGeneratorProvider(AbstractProvider):
     Provides asynchronous generator functionality for streaming results.
     """
     supports_stream = True
+    use_stream_timeout = True
 
     @classmethod
     def create_completion(
@@ -290,6 +293,7 @@ class AsyncGeneratorProvider(AbstractProvider):
         model: str,
         messages: Messages,
         timeout: int = None,
+        stream_timeout: int = None,
         **kwargs
     ) -> CreateResult:
         """
@@ -307,7 +311,7 @@ class AsyncGeneratorProvider(AbstractProvider):
         """
         return to_sync_generator(
             cls.create_async_generator(model, messages, **kwargs),
-            timeout=timeout
+            timeout=stream_timeout if cls.use_stream_timeout is None else timeout,
         )
 
     @staticmethod
@@ -334,7 +338,7 @@ class AsyncGeneratorProvider(AbstractProvider):
         raise NotImplementedError()
 
     @classmethod
-    def async_create_function(cls, *args, **kwargs) -> AsyncResult:
+    async def async_create_function(cls, *args, **kwargs) -> AsyncResult:
         """
         Creates a completion using the synchronous method.
 
@@ -344,7 +348,19 @@ class AsyncGeneratorProvider(AbstractProvider):
         Returns:
             CreateResult: The result of the completion creation.
         """
-        return cls.create_async_generator(*args, **kwargs)
+        response = cls.create_async_generator(*args, **kwargs)
+        if "stream_timeout" in kwargs or "timeout" in kwargs:
+            while True:
+                try:
+                    yield await asyncio.wait_for(
+                        response.__anext__(),
+                        timeout=kwargs.get("stream_timeout") if cls.use_stream_timeout else kwargs.get("timeout")
+                    )
+                except StopAsyncIteration:
+                    break
+        else:
+            async for chunk in response:
+                yield chunk
 
 class ProviderModelMixin:
     default_model: str = None
@@ -356,11 +372,21 @@ class ProviderModelMixin:
     video_models: list = []
     audio_models: dict = {}
     last_model: str = None
+    models_loaded: bool = False
+    models_tags: dict[str, list[str]] = None
 
     @classmethod
-    def get_models(cls, **kwargs) -> list[str]:
+    def get_models(cls, api_key: str = None, **kwargs) -> list[str]:
         if not cls.models and cls.default_model is not None:
             cls.models = [cls.default_model]
+        if not cls.models_loaded and hasattr(cls, "get_cache_file"):
+            if cls.get_cache_file().exists():
+                cls.live += 1
+            elif not api_key:
+                api_key = AuthManager.load_api_key(cls)
+                if api_key:
+                    cls.live += 1
+        cls.models_loaded = True
         return cls.models
 
     @classmethod
@@ -368,7 +394,13 @@ class ProviderModelMixin:
         if not model and cls.default_model is not None:
             model = cls.default_model
         if model in cls.model_aliases:
-            model = cls.model_aliases[model]
+            alias = cls.model_aliases[model]
+            if isinstance(alias, list):
+                selected_model = random.choice(alias)
+                debug.log(f"{cls.__name__}: Selected model '{selected_model}' from alias '{model}'")
+                return selected_model
+            debug.log(f"{cls.__name__}: Using model '{alias}' for alias '{model}'")
+            return alias
         if model not in cls.model_aliases.values():
             if model not in cls.get_models(**kwargs) and cls.models:
                 raise ModelNotFoundError(f"Model not found: {model} in: {cls.__name__} Valid models: {cls.models}")
@@ -437,8 +469,8 @@ class AsyncAuthedProvider(AsyncGeneratorProvider, AuthFileMixin):
                     json.dump(auth_result, cache_file, default=toJSON)
             except TypeError as e:
                 raise RuntimeError(f"Failed to save: {auth_result.get_dict()}\n{type(e).__name__}: {e}")
-         elif cache_file.exists():
-            cache_file.unlink()
+         # elif cache_file.exists():
+         #    cache_file.unlink()
 
     @classmethod
     def get_auth_result(cls) -> AuthResult:
@@ -475,7 +507,7 @@ class AsyncAuthedProvider(AsyncGeneratorProvider, AuthFileMixin):
                     auth_result = chunk
                 else:
                     yield chunk
-            for chunk in to_sync_generator(cls.create_authed(model, messages, auth_result, **kwargs)):
+            for chunk in to_sync_generator(cls.create_authed(model, messages, auth_result, **kwargs), kwargs.get("stream_timeout", kwargs.get("timeout"))):
                 if cache_file is not None:
                     cls.write_cache_file(cache_file, auth_result)
                     cache_file = None
@@ -493,11 +525,21 @@ class AsyncAuthedProvider(AsyncGeneratorProvider, AuthFileMixin):
         try:
             auth_result = cls.get_auth_result()
             response = to_async_iterator(cls.create_authed(model, messages, **kwargs, auth_result=auth_result))
-            async for chunk in response:
-                yield chunk
+            if "stream_timeout" in kwargs or "timeout" in kwargs:
+                while True:
+                    try:
+                        yield await asyncio.wait_for(
+                            response.__anext__(),
+                            timeout=kwargs.get("stream_timeout") if cls.use_stream_timeout else kwargs.get("timeout")
+                        )
+                    except StopAsyncIteration:
+                        break
+            else:
+                async for chunk in response:
+                    yield chunk
         except (MissingAuthError, NoValidHarFileError, CloudflareError):
-            if cache_file.exists():
-                cache_file.unlink()
+            # if cache_file.exists():
+            #     cache_file.unlink()
             response = cls.on_auth_async(**kwargs)
             async for chunk in response:
                 if isinstance(chunk, AuthResult):

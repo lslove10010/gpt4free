@@ -20,7 +20,7 @@ except ImportError:
 
 from ... import debug
 from ...typing import Messages, Cookies, MediaListType, AsyncResult, AsyncIterator
-from ...providers.response import JsonConversation, Reasoning, RequestLogin, ImageResponse, YouTube, AudioResponse, TitleGeneration
+from ...providers.response import JsonConversation, Reasoning, RequestLogin, ImageResponse, YouTubeResponse, AudioResponse, TitleGeneration
 from ...requests.raise_for_status import raise_for_status
 from ...requests.aiohttp import get_connector
 from ...requests import get_nodriver
@@ -71,8 +71,8 @@ models = {
     "gemini-2.0-flash-thinking": {"x-goog-ext-525001261-jspb": '[null,null,null,null,"9c17b1863f581b8a"]'},
     "gemini-2.0-flash-thinking-with-apps": {"x-goog-ext-525001261-jspb": '[null,null,null,null,"f8f8f5ea629f5d37"]'},
     # Currently used models
-    "gemini-2.5-pro": {"x-goog-ext-525001261-jspb", '[1,null,null,null,"61530e79959ab139",null,null,null,[4]]'},
-    "gemini-2.5-flash": {"x-goog-ext-525001261-jspb", '[1,null,null,null,"9ec249fc9ad08861",null,null,null,[4]]'},
+    "gemini-2.5-pro": {"x-goog-ext-525001261-jspb": '[1,null,null,null,"61530e79959ab139",null,null,null,[4]]'},
+    "gemini-2.5-flash": {"x-goog-ext-525001261-jspb": '[1,null,null,null,"9ec249fc9ad08861",null,null,null,[4]]'},
     "gemini-audio": {}
 }
 
@@ -91,10 +91,6 @@ class Gemini(AsyncGeneratorProvider, ProviderModelMixin):
     models = [
         default_model, "gemini-2.5-flash", "gemini-2.5-pro"
     ]
-    model_aliases = {
-        "gemini-2.0": "",
-        "gemini-2.0-flash": ["gemini-2.0-flash", "gemini-2.0-flash", "gemini-2.0-flash-exp"],
-    }
 
     synthesize_content_type = "audio/vnd.wav"
     
@@ -105,29 +101,6 @@ class Gemini(AsyncGeneratorProvider, ProviderModelMixin):
     auto_refresh = True
     refresh_interval = 540
     rotate_tasks = {}
-
-    @classmethod
-    def get_model(cls, model: str) -> str:
-        """Get the internal model name from the user-provided model name."""
-        if not model:
-            return cls.default_model
-        
-        # Check if the model exists directly in our models list
-        if model in cls.models:
-            return model
-        
-        # Check if there's an alias for this model
-        if model in cls.model_aliases:
-            alias = cls.model_aliases[model]
-            # If the alias is a list, randomly select one of the options
-            if isinstance(alias, list):
-                selected_model = random.choice(alias)
-                debug.log(f"Gemini: Selected model '{selected_model}' from alias '{model}'")
-                return selected_model
-            debug.log(f"Gemini: Using model '{alias}' for alias '{model}'")
-            return alias
-        
-        raise ModelNotFoundError(f"Model {model} not found")
 
     @classmethod
     async def nodriver_login(cls, proxy: str = None) -> AsyncIterator[str]:
@@ -338,7 +311,7 @@ class Gemini(AsyncGeneratorProvider, ProviderModelMixin):
                                 pass
                         youtube_ids = youtube_ids if youtube_ids else find_youtube_ids(content)
                         if youtube_ids:
-                            yield YouTube(youtube_ids)
+                            yield YouTubeResponse(youtube_ids)
 
     @classmethod
     async def synthesize(cls, params: dict, proxy: str = None) -> AsyncIterator[bytes]:

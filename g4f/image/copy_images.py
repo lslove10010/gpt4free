@@ -16,7 +16,6 @@ from ..requests.aiohttp import get_connector
 from ..image import MEDIA_TYPE_MAP, EXTENSIONS_MAP
 from ..tools.files import secure_filename
 from ..providers.response import ImageResponse, AudioResponse, VideoResponse, quote_url
-from ..Provider.template import BackendApi
 from . import is_accepted_format, extract_data_uri
 from .. import debug
 
@@ -60,15 +59,15 @@ def update_filename(response, filename: str) -> str:
     timestamp = datetime.strptime(date, '%a, %d %b %Y %H:%M:%S %Z').timestamp()
     return str(int(timestamp)) + "_" + filename.split("_", maxsplit=1)[-1]
 
-async def save_response_media(response, prompt: str, tags: list[str] = [], transcript: str = None) -> AsyncIterator:
+async def save_response_media(response, prompt: str, tags: list[str] = [], transcript: str = None, content_type: str = None) -> AsyncIterator:
     """Save media from response to local file and return URL"""
     if isinstance(response, dict):
-        content_type = response.get("mimeType", "audio/mpeg")
+        content_type = response.get("mimeType", content_type or "audio/mpeg")
         transcript = response.get("transcript")
         response = response.get("data")
     elif hasattr(response, "headers"):
-        content_type = response.headers["content-type"]
-    else:
+        content_type = response.headers.get("content-type", content_type)
+    elif not content_type:
         raise ValueError("Response must be a dict or have headers")
 
     if isinstance(response, str):
@@ -171,15 +170,8 @@ async def copy_media(
                     with open(target_path, "wb") as f:
                         f.write(extract_data_uri(image))
                 elif not os.path.exists(target_path) or os.lstat(target_path).st_size <= 0:
-                    # Apply BackendApi settings if needed
-                    if BackendApi.working and image.startswith(BackendApi.url):
-                        request_headers = BackendApi.headers if headers is None else headers
-                        request_ssl = BackendApi.ssl
-                    else:
-                        request_headers = headers
-                        request_ssl = ssl
                     # Use aiohttp to fetch the image
-                    async with session.get(image, ssl=request_ssl, headers=request_headers) as response:
+                    async with session.get(image, ssl=ssl) as response:
                         response.raise_for_status()
                         if target is None:
                             filename = update_filename(response, filename)

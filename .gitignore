@@ -37,3 +37,12 @@ projects/windows/
 *.bak
 *.backup
 .env
+g4f.dev/
+
+# Build artifacts
+build/
+dist/
+*.spec
+pyproject.toml.bak
+debian/
+winget/

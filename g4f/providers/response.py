@@ -139,6 +139,11 @@ class JsonMixin:
             if not key.startswith("__")
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict) -> JsonMixin:
+        """Create an instance from a dictionary."""
+        return cls(**data)
+
     def reset(self) -> None:
         """Reset all attributes."""
         self.__dict__ = {}
@@ -146,10 +151,36 @@ class JsonMixin:
 class RawResponse(ResponseType, JsonMixin):
     pass
 
+class ObjectMixin:
+    def __init__(self, **kwargs) -> None:
+        """Initialize with keyword arguments as attributes."""
+        for key, value in kwargs.items():
+            setattr(self, key, ObjectMixin.from_dict(value) if isinstance(value, dict) else [ObjectMixin.from_dict(v) if isinstance(v, dict) else v for v in value] if isinstance(value, list) else value)
+
+    def get_dict(self) -> Dict:
+        """Return a dictionary of non-private attributes."""
+        return {
+            key: value.get_dict() if isinstance(value, ObjectMixin) else [v.get_dict() if isinstance(v, ObjectMixin) else v for v in value] if isinstance(value, list) else value
+            for key, value in self.__dict__.items()
+            if not key.startswith("__")
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> JsonMixin:
+        """Create an instance from a dictionary."""
+        return cls(**data)
+
+class JsonResponse(ResponseType, ObjectMixin):
+    def __str__(self) -> str:
+        return str(self.get_dict())
+
 class HiddenResponse(ResponseType):
     def __str__(self) -> str:
         """Hidden responses return an empty string."""
         return ""
+
+class JsonRequest(HiddenResponse, ObjectMixin):
+    pass
 
 class FinishReason(JsonMixin, HiddenResponse):
     def __init__(self, reason: str) -> None:
@@ -170,12 +201,22 @@ class Usage(JsonMixin, HiddenResponse):
         self,
         promptTokens: int = None,
         completionTokens: int = None,
+        input_tokens: int = None,
+        output_tokens: int = None,
+        output_tokens_details: Dict = None,
         **kwargs
     ):
         if promptTokens is not None:
             kwargs["prompt_tokens"] = promptTokens
         if completionTokens is not None:
             kwargs["completion_tokens"] = completionTokens
+        if input_tokens is not None:
+            kwargs["prompt_tokens"] = input_tokens
+        if output_tokens is not None:
+            kwargs["completion_tokens"] = output_tokens
+        if output_tokens_details is not None:
+            for key, value in output_tokens_details.items():
+                kwargs[key] = value
         if "total_tokens" not in kwargs and "prompt_tokens" in kwargs and "completion_tokens" in kwargs:
             kwargs["total_tokens"] = kwargs["prompt_tokens"] + kwargs["completion_tokens"]
         return super().__init__(**kwargs)
@@ -193,10 +234,17 @@ class DebugResponse(HiddenResponse):
         """Initialize with a log message."""
         self.log = log
 
+class PlainTextResponse(HiddenResponse):
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+class VariantResponse(HiddenResponse):
+    def __init__(self, text: str) -> None:
+        self.text = text
+
 class ContinueResponse(HiddenResponse):
-    def __init__(self, log: str) -> None:
-        """Initialize with a log message."""
-        self.log = log
+    def __init__(self, text: str) -> None:
+        self.text = text
 
 class Reasoning(ResponseType):
     def __init__(
@@ -268,7 +316,7 @@ class SourceLink(ResponseType):
         title = f"[{self.title}]"
         return f" {format_link(self.url, title)}"
 
-class YouTube(HiddenResponse):
+class YouTubeResponse(HiddenResponse):
     def __init__(self, ids: List[str], add_links: bool = False) -> None:
         """Initialize with a list of YouTube IDs."""
         self.ids = ids
@@ -295,6 +343,8 @@ class AudioResponse(ResponseType):
 
     def to_uri(self) -> str:
         if isinstance(self.data, str):
+            if self.data.startswith("/media/"):
+                return quote(self.data, '/?&=')
             return self.data
         """Return audio data as a base64-encoded data URI."""
         data_base64 = base64.b64encode(self.data).decode()
@@ -364,7 +414,7 @@ class ImageResponse(MediaResponse):
         if self.get("width") and self.get("height"):
             return "\n".join([
                 f'<a href="{html.escape(url)}" data-width="{self.get("width")}" data-height="{self.get("height")}" data-source="{html.escape(self.get("source_url", ""))}">'
-                + f'<img src="{url.replace("/media/", "/thumbnail/")}" alt="{html.escape(self.alt)}"></a>'
+                + f'<img src="{url.replace("/media/", "/thumbnail/")}" alt="{html.escape(" ".join(self.alt.split()))}"></a>'
                 for url in self.get_list()
             ])
         return format_images_markdown(self.urls, self.alt, self.get("preview"))
@@ -382,7 +432,7 @@ class VideoResponse(MediaResponse):
             return "\n".join(result)
         return "\n".join([f'<video src="{quote_url(video)}"></video>' for video in self.get_list()])
 
-class ImagePreview(ImageResponse, HiddenResponse):
+class ImagePreview(HiddenResponse, ImageResponse):
     pass
 
 class PreviewResponse(HiddenResponse):
@@ -399,5 +449,5 @@ class Parameters(ResponseType, JsonMixin):
         """Return an empty string."""
         return ""
 
-class ProviderInfo(JsonMixin, HiddenResponse):
+class ProviderInfo(HiddenResponse, JsonMixin):
     pass

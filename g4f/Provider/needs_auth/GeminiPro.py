@@ -28,18 +28,19 @@ class GeminiPro(AsyncGeneratorProvider, ProviderModelMixin):
     supports_system_message = True
     needs_auth = True
 
-    default_model = "gemini-2.5-flash-preview-04-17"
+    default_model = "gemini-2.5-flash"
     default_vision_model = default_model
     fallback_models = [
         "gemini-2.0-flash",
         "gemini-2.0-flash-lite",
         "gemini-2.0-flash-thinking-exp",
-        "gemini-2.5-flash-preview-04-17",
+        "gemini-2.5-flash",
         "gemma-3-1b-it",
         "gemma-3-12b-it",
         "gemma-3-27b-it",
         "gemma-3-4b-it",
-        "gemma-3n-e4b-it"
+        "gemma-3n-e2b-it",
+        "gemma-3n-e4b-it",
     ]
 
     @classmethod
@@ -58,6 +59,7 @@ class GeminiPro(AsyncGeneratorProvider, ProviderModelMixin):
                     if "generateContent" in model.get("supportedGenerationMethods")
                 ]
                 cls.models.sort()
+                cls.live += 1
             except Exception as e:
                 debug.error(e)
                 if api_key is not None:

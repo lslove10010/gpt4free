@@ -25,6 +25,7 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
+    HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 from starlette.staticfiles import NotModifiedResponse
@@ -65,7 +66,7 @@ from g4f.client.helper import filter_none
 from g4f.config import DEFAULT_PORT, DEFAULT_TIMEOUT, DEFAULT_STREAM_TIMEOUT
 from g4f.image import EXTENSIONS_MAP, is_data_an_media, process_image
 from g4f.image.copy_images import get_media_dir, copy_media, get_source_url
-from g4f.errors import ProviderNotFoundError, ModelNotFoundError, MissingAuthError, NoValidHarFileError, MissingRequirementsError
+from g4f.errors import ProviderNotFoundError, ModelNotFoundError, MissingAuthError, NoValidHarFileError, MissingRequirementsError, RateLimitError
 from g4f.cookies import read_cookie_files, get_cookies_dir
 from g4f.providers.types import ProviderType
 from g4f.providers.response import AudioResponse
@@ -239,11 +240,10 @@ class Api:
                     user_g4f_api_key = await self.get_g4f_api_key(request)
                 except HTTPException:
                     user_g4f_api_key = await self.security(request)
-                    if hasattr(user_g4f_api_key, "credentials"):
-                        user_g4f_api_key = user_g4f_api_key.credentials
+                    user_g4f_api_key = getattr(user_g4f_api_key, "credentials", user_g4f_api_key)
+                country = request.headers.get("Cf-Ipcountry", "")
                 if AppConfig.demo and user is None:
                     ip = request.headers.get("X-Forwarded-For", "")[:4].strip(":.")
-                    country = request.headers.get("Cf-Ipcountry", "")
                     user = request.headers.get("x-user", ip)
                     user = f"{country}:{user}" if country else user
                 if AppConfig.g4f_api_key is None or not user_g4f_api_key or not secrets.compare_digest(AppConfig.g4f_api_key, user_g4f_api_key):
@@ -253,18 +253,28 @@ class Api:
                         except:
                             try:
                                 data = json.loads(decrypt_data(session_key, user_g4f_api_key))
-                                expires = int(decrypt_data(private_key, data["data"])) + 86400
+                                debug.log(f"Decrypted G4F API key data: {data}")
+                                expires = int(decrypt_data(private_key, data.pop("data"))) + 86400
                                 user = data.get("user", user)
-                                if not user:
+                                if not user or "referrer" not in data:
                                     raise ValueError("User not found")
                             except:
                                 return ErrorResponse.from_message(f"Invalid G4F API key", HTTP_401_UNAUTHORIZED)
+                        user = f"{country}:{user}" if country else user
                         expires = int(expires) - int(time.time())
                         hours, remainder = divmod(expires, 3600)
                         minutes, seconds = divmod(remainder, 60)
-                        debug.log(f"User: '{user}' G4F API key expires in {hours}h {minutes}m {seconds}s")
                         if expires < 0:
+                            debug.log(f"G4F API key expired for user '{user}'")
                             return ErrorResponse.from_message("G4F API key expired", HTTP_401_UNAUTHORIZED)
+                        count = 0
+                        for char in user:
+                            if char.isupper():
+                                count += 1
+                        if count >= 6:
+                            debug.log(f"Invalid user name (screaming): '{user}'")
+                            return ErrorResponse.from_message("Invalid user name (screaming)", HTTP_401_UNAUTHORIZED)
+                        debug.log(f"User: '{user}' G4F API key expires in {hours}h {minutes}m {seconds}s")
                 else:
                     user = "admin"
                 path = request.url.path
@@ -408,6 +418,8 @@ class Api:
                 })
             return ErrorResponse.from_message("The model does not exist.", HTTP_404_NOT_FOUND)
 
+        most_wanted = {}
+        failure_counts = {}
         responses = {
             HTTP_200_OK: {"model": ChatCompletion},
             HTTP_401_UNAUTHORIZED: {"model": ErrorResponseModel},
@@ -424,8 +436,29 @@ class Api:
             provider: str = None,
             conversation_id: str = None,
             x_user: Annotated[str | None, Header()] = None,
-            cf_ipcountry: Annotated[str | None, Header()] = None
+            cf_ipcountry: Annotated[str | None, Header()] = None,
+            x_forwarded_for: Annotated[str | None, Header()] = None
         ):
+            if AppConfig.demo and x_forwarded_for is not None:
+                current_most_wanted = next(iter(most_wanted.values()), 0)
+                is_most_wanted = False
+                if x_forwarded_for in most_wanted:
+                    if failure_counts.get(x_forwarded_for, 0) > 1:
+                        failure_counts[x_forwarded_for] -= 1
+                        most_wanted[x_forwarded_for] += 1
+                    elif most_wanted[x_forwarded_for] >= current_most_wanted:
+                        if x_forwarded_for not in failure_counts:
+                            failure_counts[x_forwarded_for] = 0
+                        failure_counts[x_forwarded_for] += 1
+                        is_most_wanted = True
+                    else:
+                        most_wanted[x_forwarded_for] += 1
+                else:
+                    most_wanted[x_forwarded_for] = 1
+                sorted_most_wanted = dict(sorted(most_wanted.items(), key=lambda item: item[1], reverse=True))
+                print(f"Most wanted IPs: {json.dumps(sorted_most_wanted, indent=2)}")
+                if is_most_wanted:
+                    return ErrorResponse.from_message("You are most wanted! Please wait before making another request.", status_code=HTTP_429_TOO_MANY_REQUESTS)
             if provider is not None and provider not in Provider.__map__:
                 if provider in model_map:
                     config.model = provider

@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 from .Provider import IterListProvider, ProviderType
 from .Provider import (
     ### No Auth Required ###
-    Blackbox,
     Chatai,
     Cloudflare,
     Copilot,
@@ -17,7 +16,6 @@ from .Provider import (
     GLM,
     Kimi,
     LambdaChat,
-    Mintlify,
     OIVSCodeSer2,
     OIVSCodeSer0501,
     OperaAria,
@@ -27,7 +25,6 @@ from .Provider import (
     PollinationsAI,
     PollinationsImage,
     Qwen,
-    StringableInference,
     TeachAnything,
     Together,
     WeWordle,
@@ -155,7 +152,6 @@ default = Model(
     name = "",
     base_provider = "",
     best_provider = IterListProvider([
-        StringableInference,
         OIVSCodeSer0501,
         OIVSCodeSer2,
         Copilot,
@@ -168,7 +164,6 @@ default = Model(
         Together,
         Chatai,
         WeWordle,
-        Mintlify,
         TeachAnything,
         OpenaiChat,
         Cloudflare,
@@ -179,7 +174,6 @@ default_vision = VisionModel(
     name = "",
     base_provider = "",
     best_provider = IterListProvider([
-        StringableInference,
         DeepInfra,
         OIVSCodeSer0501,
         OIVSCodeSer2,
@@ -213,7 +207,7 @@ gpt_4o = VisionModel(
 gpt_4o_mini = Model(
     name          = 'gpt-4o-mini',
     base_provider = 'OpenAI',
-    best_provider = IterListProvider([Chatai, OIVSCodeSer2, Startnest, OpenaiChat, OIVSCodeSer0501])
+    best_provider = IterListProvider([Chatai, OIVSCodeSer2, Startnest, OpenaiChat])
 )
 
 gpt_4o_mini_audio = AudioModel(

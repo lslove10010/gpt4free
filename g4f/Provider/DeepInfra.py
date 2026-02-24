@@ -7,7 +7,7 @@ from .template import OpenaiTemplate
 class DeepInfra(OpenaiTemplate):
     url = "https://deepinfra.com"
     login_url = "https://deepinfra.com/dash/api_keys"
-    api_base = "https://api.deepinfra.com/v1/openai"
+    base_url = "https://api.deepinfra.com/v1/openai"
     
     working = True
     active_by_default = True
@@ -17,8 +17,6 @@ class DeepInfra(OpenaiTemplate):
     vision_models = [
         default_vision_model,
         'meta-llama/Llama-3.2-90B-Vision-Instruct',
-        'openai/gpt-oss-120b',
-        'openai/gpt-oss-20b',
     ]
 
     model_aliases = {

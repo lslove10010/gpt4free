@@ -38,7 +38,7 @@ except ImportError:
 
 from ...client.service import convert_to_provider
 from ...providers.asyncio import to_sync_generator
-from ...providers.response import FinishReason, AudioResponse, MediaResponse, Reasoning, HiddenResponse
+from ...providers.response import FinishReason, AudioResponse, MediaResponse, Reasoning, HiddenResponse, JsonResponse
 from ...client.helper import filter_markdown
 from ...tools.files import supports_filename, get_streaming, get_bucket_dir, get_tempfile
 from ...tools.run_tools import iter_run_tools
@@ -181,7 +181,7 @@ class Backend_Api(Api):
                 logger.exception(e)
                 return jsonify({"error": {"message": "Invalid JSON data"}}), 400
             if app.demo and has_crypto:
-                secret = request.headers.get("x_secret")
+                secret = request.headers.get("x-secret", request.headers.get("x_secret"))
                 if not secret or not validate_secret(secret):
                     return jsonify({"error": {"message": "Invalid or missing secret"}}), 403
             tempfiles = []
@@ -248,7 +248,26 @@ class Backend_Api(Api):
         def get_usage(date: str):
             cache_dir = Path(get_cookies_dir()) / ".usage"
             cache_file = cache_dir / f"{date}.jsonl"
-            return cache_file.read_text() if cache_file.exists() else (jsonify({"error": {"message": "No usage data found for this date"}}), 404)
+            if cache_file.exists():
+                return Response(cache_file.read_text(), mimetype='text/plain')
+            else:
+                return (jsonify({"error": {"message": "No usage data found for this date"}}), 404)
+
+        @app.route('/backend-api/v2/quota/<provider>', methods=['GET'])
+        async def get_quota(provider: str):
+            try:
+                provider_handler = convert_to_provider(provider)
+            except ProviderNotFoundError:
+                return "Provider not found", 404
+            if not hasattr(provider_handler, "get_quota"):
+                return "Provider doesn't support get_quota", 500
+            try:
+                response_data = await provider_handler.get_quota()
+                return jsonify(response_data)
+            except MissingAuthError as e:
+                return jsonify({"error": {"message": f"{type(e).__name__}: {e}"}}), 401
+            except Exception as e:
+                return jsonify({"error": {"message": f"{type(e).__name__}: {e}"}}), 500
 
         @app.route('/backend-api/v2/log', methods=['POST'])
         def add_log():
@@ -309,7 +328,7 @@ class Backend_Api(Api):
                     parameters["audio"] = {}
                 def cast_str(response):
                     buffer = next(response)
-                    while isinstance(buffer, (Reasoning, HiddenResponse)):
+                    while isinstance(buffer, (Reasoning, HiddenResponse, JsonResponse)):
                         buffer = next(response)
                     if isinstance(buffer, MediaResponse):
                         if len(buffer.get_list()) == 1:
@@ -328,7 +347,7 @@ class Backend_Api(Api):
                         for chunk in response:
                             if isinstance(chunk, FinishReason):
                                 yield f"[{chunk.reason}]" if chunk.reason != "stop" else ""
-                            elif not isinstance(chunk, Exception):
+                            elif not isinstance(chunk, (Exception, JsonResponse)):
                                 chunk = str(chunk)
                                 if chunk:
                                     yield chunk
@@ -344,10 +363,10 @@ class Backend_Api(Api):
                             response = f.read()
                     if not response:
                         response = iter_run_tools(provider_handler, **parameters)
-                        cache_dir.mkdir(parents=True, exist_ok=True)
                         response = cast_str(response)
                         response = response if isinstance(response, str) else "".join(response)
                         if response:
+                            cache_dir.mkdir(parents=True, exist_ok=True)
                             with cache_file.open("w") as f:
                                 f.write(response)
                 else:
@@ -380,7 +399,6 @@ class Backend_Api(Api):
                 logger.exception(e)
                 return jsonify({"error": {"message": f"{type(e).__name__}: {e}"}}), 500
 
-     
         @app.route('/backend-api/v2/files/<bucket_id>/stream', methods=['GET'])
         def stream_files(bucket_id: str, event_stream=True):
             return manage_files(bucket_id, event_stream)
@@ -440,7 +458,7 @@ class Backend_Api(Api):
                     os.remove(copyfile)
                     continue
                 if not is_media and result:
-                    with open(os.path.join(bucket_dir, f"{filename}.md"), 'w') as f:
+                    with open(os.path.join(bucket_dir, f"{filename}.md"), 'w', encoding="utf-8") as f:
                         f.write(f"{result}\n")
                     filenames.append(f"{filename}.md")
                 if is_media:
@@ -477,7 +495,7 @@ class Backend_Api(Api):
                 except OSError:
                     shutil.copyfile(copyfile, newfile)
                     os.remove(copyfile)
-            with open(os.path.join(bucket_dir, "files.txt"), 'w') as f:
+            with open(os.path.join(bucket_dir, "files.txt"), 'w', encoding="utf-8") as f:
                 for filename in filenames:
                     f.write(f"{filename}\n")
             return {"bucket_id": bucket_id, "files": filenames, "media": media}
@@ -572,7 +590,7 @@ class Backend_Api(Api):
             share_id = secure_filename(share_id)
             bucket_dir = get_bucket_dir(share_id)
             os.makedirs(bucket_dir, exist_ok=True)
-            with open(os.path.join(bucket_dir, "chat.json"), 'w') as f:
+            with open(os.path.join(bucket_dir, "chat.json"), 'w', encoding="utf-8") as f:
                 json.dump(chat_data, f)
             self.chat_cache[share_id] = updated
             return {"share_id": share_id}
@@ -598,19 +616,20 @@ class Backend_Api(Api):
 
     def get_provider_models(self, provider: str):
         api_key = request.headers.get("x-api-key")
-        api_base = request.headers.get("x-api-base")
+        base_url = request.headers.get("x-api-base")
         ignored = request.headers.get("x-ignored", "").split()
-        return super().get_provider_models(provider, api_key, api_base, ignored)
+        return super().get_provider_models(provider, api_key, base_url, ignored)
 
     def _format_json(self, response_type: str, content = None, **kwargs) -> str:
         """
-        Formats and returns a JSON response.
+        Formats and returns a SSE (Server-Sent Events) formatted JSON response.
 
         Args:
-            response_type (str): The type of the response.
+            response_type (str): The type of the response, used as the SSE event name.
             content: The content to be included in the response.
 
         Returns:
-            str: A JSON formatted string.
+            str: A SSE formatted string with event type and JSON data.
         """
-        return json.dumps(super()._format_json(response_type, content, **kwargs)) + "\n"
+        data = json.dumps(super()._format_json(response_type, content, **kwargs))
+        return f"event: {response_type}\ndata: {data}\n\n"

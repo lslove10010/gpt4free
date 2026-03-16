@@ -8,3 +8,5 @@ endpoints:
     type: REST
     networkVisibilities:
       - Public
+    # 去掉安全认证配置，或明确禁用
+    security: {}  # 空对象表示无认证

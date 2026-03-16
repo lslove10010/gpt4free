@@ -1,0 +1,11 @@
+version: 0.1
+component:
+  type: python-service
+  displayName: g4free
+  description: GPT4Free with GUI and API
+endpoints:
+  - name: web
+    port: 8080
+    type: REST
+    networkVisibility: Public
+    context: /

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import uuid
 import asyncio
 import base64
 import random
@@ -135,7 +136,7 @@ class Copilot(AsyncAuthedProvider, ProviderModelMixin):
         if not has_curl_cffi:
             raise MissingRequirementsError('Install or update "curl_cffi" package | pip install -U curl_cffi')
         model = cls.get_model(model)
-        websocket_url = cls.websocket_url
+        websocket_url = cls.websocket_url + f"&clientSessionId={uuid.uuid4()}"
         headers = DEFAULT_HEADERS.copy()
         headers["origin"] = cls.url
         headers["referer"] = cls.url + "/"
@@ -286,7 +287,7 @@ class Copilot(AsyncAuthedProvider, ProviderModelMixin):
                 try:
                     msg_txt, _ = await asyncio.wait_for(wss.recv(), 1 if done else timeout)
                     msg = json.loads(msg_txt)
-                except:
+                except Exception:
                     break
                 last_msg = msg
                 if msg.get("event") == "appendText":
@@ -363,16 +364,25 @@ async def get_access_token_and_cookies(url: str, proxy: str = None, needs_auth: 
                 debug.log("No access token found, but authentication not required.")
                 break
         if not needs_auth:
-            textarea = await page.select("textarea")
+            try:
+                textarea = await page.select("textarea")
+            except TimeoutError:
+                textarea = None
             if textarea is not None:
                 debug.log("Filling textarea to generate anon cookie.")
                 await textarea.send_keys("Hello")
                 await asyncio.sleep(1)
-                button = await page.select("[data-testid=\"submit-button\"]")
+                try:
+                    button = await page.select("[data-testid=\"submit-button\"]")
+                except TimeoutError:
+                    button = None
                 if button:
                     debug.log("Clicking submit button to generate anon cookie.")
                     await button.click()
-                    turnstile = await page.select('#cf-turnstile')
+                    try:
+                        turnstile = await page.select('#cf-turnstile')
+                    except TimeoutError:
+                        turnstile = None
                     if turnstile:
                         debug.log("Found Element: 'cf-turnstile'")
                         await asyncio.sleep(3)

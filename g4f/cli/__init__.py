@@ -122,6 +122,13 @@ def get_api_parser(exit_on_error: bool = True) -> ArgumentParser:
     )
 
     api_parser.add_argument(
+        "--cookies-dir",
+        type=str,
+        default=None,
+        help="Custom directory for cookies/HAR files (overrides default)."
+    )
+
+    api_parser.add_argument(
         "--g4f-api-key",
         type=str,
         default=None,
@@ -214,7 +221,16 @@ def run_api_args(args):
 
     # Custom cookie browsers
     if args.cookie_browsers:
-        cookies.BROWSERS = [cookies[b] for b in args.cookie_browsers]
+        cookies.BROWSERS = [b for b in cookies.BROWSERS if b.__name__ in args.cookie_browsers]
+
+    # Allow overriding the cookies directory from CLI
+    if getattr(args, "cookies_dir", None):
+        # create dir if it doesn't exist and update config
+        try:
+            os.makedirs(args.cookies_dir, exist_ok=True)
+        except Exception:
+            pass
+        cookies.set_cookies_dir(args.cookies_dir)
 
     # Launch server
     run_api(
@@ -285,7 +301,17 @@ def main():
     mode_parser = ArgumentParser(description="Select mode to run g4f in.", exit_on_error=False)
     mode_parser.add_argument("mode", nargs="?", choices=["api", "gui", "client", "mcp", "auth"], default="api", help="Mode to run g4f in (default: api).")
     
-    args, remaining = mode_parser.parse_known_args(remaining)
+    # Preserve original remaining so the API parser gets all args if mode
+    # detection fails (e.g. `python -m g4f --port 8080` without a mode prefix).
+    original_remaining = remaining
+    try:
+        args, remaining = mode_parser.parse_known_args(remaining)
+    except (argparse.ArgumentError, SystemExit):
+        # If mode parsing fails (e.g. a port number or unknown flag appears
+        # before the mode positional), fall back to API mode and restore the
+        # original argument list so the API parser can handle them.
+        args = argparse.Namespace(mode="api")
+        remaining = original_remaining
     try:
         if args.mode == "auth":
             parser = get_auth_parser()
@@ -334,7 +360,7 @@ def generate_autocomplete():
     auth_providers = ["gemini-cli", "antigravity", "qwencode", "github-copilot"]
     auth_subcommands = ["status", "login"]
     # Options for each command
-    api_args = ["--bind", "--port", "--debug", "--gui", "--no-gui", "--model", "--provider", "--media-provider", "--proxy", "--workers", "--disable-colors", "--ignore-cookie-files", "--g4f-api-key", "--ignored-providers", "--cookie-browsers", "--reload", "--demo", "--timeout", "--stream-timeout", "--ssl-keyfile", "--ssl-certfile", "--log-config", "--access-log", "--no-access-log", "--browser-port", "--browser-host"]
+    api_args = ["--bind", "--port", "--debug", "--gui", "--no-gui", "--model", "--provider", "--media-provider", "--proxy", "--workers", "--disable-colors", "--ignore-cookie-files", "--cookies-dir", "--g4f-api-key", "--ignored-providers", "--cookie-browsers", "--reload", "--demo", "--timeout", "--stream-timeout", "--ssl-keyfile", "--ssl-certfile", "--log-config", "--access-log", "--no-access-log", "--browser-port", "--browser-host"]
     gui_args = ["--debug"]
     client_args = ["--debug"]
     mcp_args = ["--debug", "--http", "--host", "--port", "--origin"]

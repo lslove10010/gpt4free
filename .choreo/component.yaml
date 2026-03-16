@@ -1,0 +1,10 @@
+schemaVersion: 1.0
+endpoints:
+  - name: g4f-web
+    displayName: GPT4Free Web
+    service:
+      basePath: /
+      port: 8080
+    type: REST
+    networkVisibilities:
+      - Public

@@ -359,7 +359,7 @@ def evict_cache_if_needed():
 class Yupp(AsyncGeneratorProvider, ProviderModelMixin):
     url = "https://yupp.ai"
     login_url = "https://discord.gg/qXA4Wf4Fsm"
-    working = has_cloudscraper
+    working = False and has_cloudscraper
     active_by_default = True
     supports_stream = True
     image_cache = True
@@ -980,7 +980,7 @@ class Yupp(AsyncGeneratorProvider, ProviderModelMixin):
                         provider_info = cls.get_dict()
                         provider_info["model"] = model_id
                         for i, selection in enumerate(data.get("modelSelections", [])):
-                            if selection.get("selectionSource") == "USER_SELECTED":
+                            if selection.get("selectionSource") == "USER_SELECTED" or i == 0:
                                 target_stream_id = extract_ref_id(
                                     select_stream[i].get("next")
                                 )
@@ -990,7 +990,7 @@ class Yupp(AsyncGeneratorProvider, ProviderModelMixin):
                                 )
                                 provider_info["modelUrl"] = selection.get("externalUrl")
                                 log_debug(f"Found target stream ID: {target_stream_id}")
-                            else:
+                            if selection.get("selectionSource") != "USER_SELECTED":
                                 variant_stream_id = extract_ref_id(
                                     select_stream[i].get("next")
                                 )

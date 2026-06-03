@@ -1,9 +1,9 @@
 # GPT4Free (g4f)
 
-[![PyPI](https://img.shields.io/pypi/v/g4f)](https://pypi.org/project/g4f) [![Docker Hub](https://img.shields.io/badge/docker-hlohaus789%2Fg4f-blue)](https://hub.docker.com/r/hlohaus789/g4f) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-red.svg)](https://www.gnu.org/licenses/gpl-3.0.txt) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/g4f?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/g4f)
+[![PyPI](https://img.shields.io/pypi/v/g4f)](https://pypi.org/project/g4f) [![Docker Hub](https://img.shields.io/badge/docker-hlohaus789%2Fg4f-blue)](https://hub.docker.com/r/hlohaus789/g4f) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-red.svg)](https://www.gnu.org/licenses/gpl-3.0.txt) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/g4f?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/g4f) ![GitHub Repo stars](https://img.shields.io/github/stars/xtekky/gpt4free)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/7f60c240-00fa-4c37-bf7f-ae5cc20906a1" alt="GPT4Free logo" height="200" />
+  <img src="https://g4f.dev/docs/images/477107515-7f60c240-00fa-4c37-bf7f-ae5cc20906a1.png" alt="GPT4Free logo" height="200" />
 </p>
 
 <p align="center">
@@ -454,7 +454,7 @@ GPT4Free is guided by community principles:
 4. Community-centered development and broad access to AI technologies.
 5. Promote innovation, creativity, and accessibility.
 
-https://g4f.dev/manifest
+https://g4f.dev/manifesto
 
 ---
 
@@ -531,7 +531,7 @@ Docs & deeper reading
 - Full docs: https://g4f.dev/docs  
 - Client API docs: https://g4f.dev/docs/client  
 - Async client docs: https://g4f.dev/docs/async_client  
-- Provider guides: https://g4f.dev/docs/guides  
+- Provider guides: https://g4f.dev/docs/providers  
 - Local inference: https://g4f.dev/docs/local
 
 ---

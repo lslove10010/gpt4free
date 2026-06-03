@@ -16,7 +16,7 @@ from ..requests.aiohttp import get_connector
 from ..image import MEDIA_TYPE_MAP, EXTENSIONS_MAP
 from ..tools.files import secure_filename
 from ..providers.response import ImageResponse, AudioResponse, VideoResponse, quote_url
-from . import is_accepted_format, extract_data_uri
+from . import is_accepted_format, extract_data_uri, is_safe_url
 from .. import debug
 
 # Directory for storing generated media files
@@ -38,7 +38,7 @@ def get_media_extension(media: str) -> str:
     if not extension or len(extension) > 4:
         return ""
     if extension[1:] not in EXTENSIONS_MAP:
-        raise ""
+        return ""
     return extension
 
 def ensure_media_dir():
@@ -170,6 +170,8 @@ async def copy_media(
                     with open(target_path, "wb") as f:
                         f.write(extract_data_uri(image))
                 elif not os.path.exists(target_path) or os.lstat(target_path).st_size <= 0:
+                    if not is_safe_url(image):
+                        raise ValueError("Invalid or disallowed media URL")
                     # Use aiohttp to fetch the image
                     async with session.get(image, ssl=ssl) as response:
                         response.raise_for_status()

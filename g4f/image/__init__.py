@@ -4,12 +4,19 @@ import os
 import re
 import io
 import base64
+import socket
+import ipaddress
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
 import requests
+
+try:
+    from urllib3.util import parse_url as urllib3_parse_url
+except ImportError:
+    urllib3_parse_url = None
 
 try:
     from PIL import Image, ImageOps
@@ -39,6 +46,11 @@ EXTENSIONS_MAP: dict[str, str] = {
     "mkv": "video/x-matroska",
     "webm": "video/webm",
     "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "avi": "video/x-msvideo",
+    "ogv": "video/ogg",
+    "mpg": "video/mpeg",
+    "mpeg": "video/mpeg",
 }
 
 MEDIA_TYPE_MAP: dict[str, str] = {value: key for key, value in EXTENSIONS_MAP.items()}
@@ -102,6 +114,45 @@ def is_allowed_extension(filename: str) -> Optional[str]:
     if extension is None:
         return None
     return EXTENSIONS_MAP[extension]
+
+
+def is_safe_url(url: str) -> bool:
+    """Return True only for http/https URLs that do not point to private/loopback/reserved addresses."""
+    try:
+        parsed = urlparse(url)
+
+        if parsed.scheme not in ("http", "https"):
+            return False
+
+        if "\\" in url:
+            return False
+
+        hostname = parsed.hostname
+        if hostname is None:
+            return False
+
+        if urllib3_parse_url is not None:
+            parsed_urllib3 = urllib3_parse_url(url)
+            if parsed_urllib3.host and parsed_urllib3.host != hostname:
+                return False
+            hostname = parsed_urllib3.host or hostname
+
+        if hostname is None:
+            return False
+
+        addr_infos = socket.getaddrinfo(hostname, None)
+        if not addr_infos:
+            return False
+
+        for addr_info in addr_infos:
+            addr = ipaddress.ip_address(addr_info[4][0])
+            if (addr.is_private or addr.is_loopback or addr.is_link_local
+                    or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+                return False
+    except Exception:
+        return False
+    return True
+
 
 def is_data_an_media(data, filename: str = None) -> str:
     content_type = is_data_an_audio(data, filename)
@@ -238,6 +289,8 @@ def detect_file_type(binary_data: bytes) -> tuple[str, str] | None:
             return ".heic", "image/heif"
         elif brand in [b"avif"]:
             return ".avif", "image/avif"
+        else:
+            return ".mp4", "video/mp4"
     elif binary_data.lstrip().startswith((b"<?xml", b"<svg")):
         return ".svg", "image/svg+xml"
 
@@ -346,11 +399,10 @@ def process_image(image: Image.Image, new_width: int = 400, new_height: int = 40
     image = ImageOps.exif_transpose(image)
     # Remove transparency
     if image.mode == "RGBA":
-        # image.load()
-        # white = Image.new('RGB', image.size, (255, 255, 255))
-        # white.paste(image, mask=image.split()[-1])
-        # image = white
-        pass
+        image.load()
+        white = Image.new('RGB', image.size, (255, 255, 255))
+        white.paste(image, mask=image.split()[-1])
+        image = white
     # Convert to RGB for jpg format
     elif image.mode != "RGB":
         image = image.convert("RGB")
@@ -378,6 +430,8 @@ def to_bytes(image: ImageType) -> bytes:
             is_data_uri_an_image(image)
             return extract_data_uri(image)
         elif image.startswith("http://") or image.startswith("https://"):
+            if not is_safe_url(image):
+                raise ValueError("Invalid or disallowed media URL")
             path: str = urlparse(image).path
             if path.startswith("/files/"):
                 path = get_bucket_dir(*path.split("/")[2:])

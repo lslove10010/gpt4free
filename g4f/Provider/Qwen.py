@@ -32,6 +32,7 @@ except ImportError:
     has_curl_cffi = False
 try:
     import zendriver as nodriver
+
     has_nodriver = True
 except ImportError:
     has_nodriver = False
@@ -87,28 +88,26 @@ def get_oss_headers(method: str, date_str: str, sts_data: dict, content_type: st
 
 
 text_models = [
-    'qwen3-max-preview', 'qwen-plus-2025-09-11', 'qwen3-235b-a22b', 'qwen3-coder-plus', 'qwen3-30b-a3b',
-    'qwen3-coder-30b-a3b-instruct', 'qwen-max-latest', 'qwen-plus-2025-01-25', 'qwq-32b', 'qwen-turbo-2025-02-11',
-    'qwen2.5-omni-7b', 'qvq-72b-preview-0310', 'qwen2.5-vl-32b-instruct', 'qwen2.5-14b-instruct-1m',
-    'qwen2.5-coder-32b-instruct', 'qwen2.5-72b-instruct']
+    'qwen3.6-plus', 'qwen3.6-max-preview', 'qwen3.5-plus', 'qwen3.5-omni-plus', 'qwen3.6-35b-a3b', 'qwen3.5-flash',
+    'qwen3.5-max-2026-03-08', 'qwen3.6-plus-preview', 'qwen3.5-397b-a17b', 'qwen3.5-122b-a10b', 'qwen3.5-omni-flash',
+    'qwen3.5-27b', 'qwen3.5-35b-a3b', 'qwen3-max-2026-01-23', 'qwen-plus-2025-07-28', 'qwen3-coder-plus',
+    'qwen3-vl-plus', 'qwen3-omni-flash-2025-12-01', 'qwen-max-latest']
 
 image_models = [
-    'qwen3-max-preview', 'qwen-plus-2025-09-11', 'qwen3-235b-a22b', 'qwen3-coder-plus', 'qwen3-30b-a3b',
-    'qwen3-coder-30b-a3b-instruct', 'qwen-max-latest', 'qwen-plus-2025-01-25', 'qwen-turbo-2025-02-11',
-    'qwen2.5-omni-7b', 'qwen2.5-vl-32b-instruct', 'qwen2.5-14b-instruct-1m', 'qwen2.5-coder-32b-instruct',
-    'qwen2.5-72b-instruct']
+    'qwen3.6-plus', 'qwen3.5-plus', 'qwen3.5-omni-plus', 'qwen3.6-35b-a3b', 'qwen3.5-flash', 'qwen3.5-397b-a17b',
+    'qwen3.5-122b-a10b', 'qwen3.5-omni-flash', 'qwen3.5-27b', 'qwen3.5-35b-a3b', 'qwen3-max-2026-01-23',
+    'qwen-plus-2025-07-28', 'qwen3-coder-plus', 'qwen3-vl-plus', 'qwen3-omni-flash-2025-12-01', 'qwen-max-latest']
 
 vision_models = [
-    'qwen3-max-preview', 'qwen-plus-2025-09-11', 'qwen3-235b-a22b', 'qwen3-coder-plus', 'qwen3-30b-a3b',
-    'qwen3-coder-30b-a3b-instruct', 'qwen-max-latest', 'qwen-plus-2025-01-25', 'qwen-turbo-2025-02-11',
-    'qwen2.5-omni-7b', 'qvq-72b-preview-0310', 'qwen2.5-vl-32b-instruct', 'qwen2.5-14b-instruct-1m',
-    'qwen2.5-coder-32b-instruct', 'qwen2.5-72b-instruct']
+    'qwen3.6-plus', 'qwen3.5-plus', 'qwen3.5-omni-plus', 'qwen3.6-35b-a3b', 'qwen3.5-flash', 'qwen3.5-397b-a17b',
+    'qwen3.5-122b-a10b', 'qwen3.5-omni-flash', 'qwen3.5-27b', 'qwen3.5-35b-a3b', 'qwen3-max-2026-01-23',
+    'qwen-plus-2025-07-28', 'qwen3-coder-plus', 'qwen3-vl-plus', 'qwen3-omni-flash-2025-12-01', 'qwen-max-latest']
 
 models = [
-    'qwen3-max-preview', 'qwen-plus-2025-09-11', 'qwen3-235b-a22b', 'qwen3-coder-plus', 'qwen3-30b-a3b',
-    'qwen3-coder-30b-a3b-instruct', 'qwen-max-latest', 'qwen-plus-2025-01-25', 'qwq-32b', 'qwen-turbo-2025-02-11',
-    'qwen2.5-omni-7b', 'qvq-72b-preview-0310', 'qwen2.5-vl-32b-instruct', 'qwen2.5-14b-instruct-1m',
-    'qwen2.5-coder-32b-instruct', 'qwen2.5-72b-instruct']
+    'qwen3.6-plus', 'qwen3.6-max-preview', 'qwen3.5-plus', 'qwen3.5-omni-plus', 'qwen3.6-35b-a3b', 'qwen3.5-flash',
+    'qwen3.5-max-2026-03-08', 'qwen3.6-plus-preview', 'qwen3.5-397b-a17b', 'qwen3.5-122b-a10b', 'qwen3.5-omni-flash',
+    'qwen3.5-27b', 'qwen3.5-35b-a3b', 'qwen3-max-2026-01-23', 'qwen-plus-2025-07-28', 'qwen3-coder-plus',
+    'qwen3-vl-plus', 'qwen3-omni-flash-2025-12-01', 'qwen-max-latest']
 
 
 class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
@@ -135,17 +134,22 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
     @classmethod
     def get_models(cls, **kwargs) -> list[str]:
         if not cls._models_loaded and has_curl_cffi:
-            response = curl_cffi.get(f"{cls.url}/api/models")
+            _token = kwargs.get("token")
+            headers = cls._get_headers(_token) if _token else {}
+            response = curl_cffi.get(f"{cls.url}/api/models", headers=headers)
             if response.ok:
                 models = response.json().get("data", [])
-                cls.text_models = [model["id"] for model in models if "t2t" in model["info"]["meta"]["chat_type"]]
+                cls.text_models = [model["id"] for model in models
+                                   if "t2t" in model.get("info", {}).get("meta", {}).get("chat_type")]
 
                 cls.image_models = [
-                    model["id"] for model in models if
-                    "image_edit" in model["info"]["meta"]["chat_type"] or "t2i" in model["info"]["meta"]["chat_type"]
+                    model["id"] for model in models
+                    if "image_edit" in model.get("info", {}).get("meta", {}).get("chat_type") or
+                       "t2i" in model.get("info", {}).get("meta", {}).get("chat_type")
                 ]
 
-                cls.vision_models = [model["id"] for model in models if model["info"]["meta"]["capabilities"]["vision"]]
+                cls.vision_models = [model["id"] for model in models
+                                     if model.get("info", {}).get("meta", {}).get("capabilities", {}).get("vision")]
 
                 cls.models = [model["id"] for model in models]
                 cls.default_model = cls.models[0]
@@ -197,7 +201,7 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
                 file_id = data.get("file_id")
 
             # Put File into Url
-            str_date = datetime.datetime.now(datetime.UTC).strftime('%Y%m%dT%H%M%SZ')
+            str_date = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
             headers = get_oss_headers('PUT', str_date, data, file_type)
             async with session.put(
                     file_url.split("?")[0],
@@ -264,6 +268,7 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
     @classmethod
     async def get_args(cls, proxy, **kwargs):
         grecaptcha = []
+
         async def callback(page: nodriver.Tab):
             while not await page.evaluate('window.__baxia__ && window.__baxia__.getFYModule'):
                 await asyncio.sleep(1)
@@ -274,6 +279,7 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
                 grecaptcha.append(captcha)
             else:
                 raise Exception(captcha)
+
         args = await get_args_from_nodriver(cls.url, proxy=proxy, callback=callback)
 
         return args, next(iter(grecaptcha))
@@ -287,55 +293,8 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
             if html.startswith('<!doctypehtml>') and "aliyun_waf_aa" in html:
                 raise CloudflareError(message or html)
 
-
     @classmethod
-    async def create_async_generator(
-            cls,
-            model: str,
-            messages: Messages,
-            media: MediaListType = None,
-            conversation: JsonConversation = None,
-            proxy: str = None,
-            stream: bool = True,
-            enable_thinking: bool = True,
-            chat_type: Literal[
-                "t2t", "search", "artifacts", "web_dev", "deep_research", "t2i", "image_edit", "t2v"
-            ] = "t2t",
-            aspect_ratio: Optional[Literal["1:1", "4:3", "3:4", "16:9", "9:16"]] = None,
-            **kwargs
-    ) -> AsyncResult:
-        """
-        chat_type:
-            DeepResearch = "deep_research"
-            Artifacts = "artifacts"
-            WebSearch = "search"
-            ImageGeneration = "t2i"
-            ImageEdit = "image_edit"
-            VideoGeneration = "t2v"
-            Txt2Txt = "t2t"
-            WebDev = "web_dev"
-        """
-        # cache_file = cls.get_cache_file()
-        # cookie: str = kwargs.get("cookie", "")  # ssxmod_itna=1-...
-        # args = kwargs.get("qwen_args", {})
-        # args.setdefault("cookies", {})
-        token = kwargs.get("token")
-
-        # if not args and cache_file.exists():
-        #     try:
-        #         with cache_file.open("r") as f:
-        #             args = json.load(f)
-        #     except json.JSONDecodeError:
-        #         debug.log(f"Cache file {cache_file} is corrupted, removing it.")
-        #         cache_file.unlink()
-        # if not cookie:
-        #     if not args:
-        #         args = await cls.get_args(proxy, **kwargs)
-        #     cookie = "; ".join([f"{k}={v}" for k, v in args["cookies"].items()])
-        model_name = cls.get_model(model)
-        prompt = get_last_user_message(messages)
-        timeout = kwargs.get("timeout") or 5 * 60
-        # for _ in range(2):
+    def _get_headers(cls, token=None):
         data = generate_cookies()
         # args,ua  = await cls.get_args(proxy, **kwargs)
         headers = {
@@ -355,43 +314,101 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
         }
         if token:
             headers['Authorization'] = f'Bearer {token}'
+        return headers
 
-        # try:
-        async with StreamSession(headers=headers) as session:
-            try:
-                async with session.get('https://chat.qwen.ai/api/v1/auths/', proxy=proxy) as user_info_res:
-                    await cls.raise_for_status(user_info_res)
-                    debug.log(await user_info_res.json())
-            except Exception as e:
-                debug.error(e)
+    @classmethod
+    async def _get_req_headers(cls, session, proxy=None):
+        if not cls._midtoken:
+            debug.log("[Qwen] INFO: No active midtoken. Fetching a new one...")
+            async with session.get('https://sg-wum.alibaba.com/w/wu.json', proxy=proxy) as r:
+                r.raise_for_status()
+                text = await r.text()
+                match = re.search(r"(?:umx\.wu|__fycb)\('([^']+)'\)", text)
+                if not match:
+                    raise RuntimeError("Failed to extract bx-umidtoken.")
+                cls._midtoken = match.group(1)
+                cls._midtoken_uses = 1
+                debug.log(
+                    f"[Qwen] INFO: New midtoken obtained. Use count: {cls._midtoken_uses}. Midtoken: {cls._midtoken}")
+        else:
+            cls._midtoken_uses += 1
+            debug.log(f"[Qwen] INFO: Reusing midtoken. Use count: {cls._midtoken_uses}")
+
+        req_headers = session.headers.copy()
+        req_headers['bx-umidtoken'] = cls._midtoken
+        req_headers['bx-v'] = '2.5.31'
+        return req_headers
+
+    @classmethod
+    async def get_quota(cls, api_key: Optional[str] = None, **kwargs) -> dict:
+        async with StreamSession(headers=cls._get_headers(kwargs.get("token"))) as session:
+            chat_payload = {
+                "title": "New Chat",
+                "models": [cls.default_model],
+                "chat_mode": "normal",
+                "chat_type": "t2t",
+                "timestamp": int(time() * 1000)
+            }
+            async with session.post(
+                    f'{cls.url}/api/v2/chats/new', json=chat_payload,
+                    headers=await cls._get_req_headers(session, proxy=kwargs.get("proxy")),
+                    proxy=kwargs.get("proxy")
+            ) as resp:
+                await cls.raise_for_status(resp)
+                return await resp.json()
+
+    @classmethod
+    async def create_async_generator(
+            cls,
+            model: str,
+            messages: Messages,
+            media: MediaListType = None,
+            conversation: JsonConversation = None,
+            proxy: str = None,
+            stream: bool = True,
+            reasoning_effort: Optional[Literal["low", "medium", "high"]] = "medium",
+            chat_type: Literal[
+                "t2t", "search", "artifacts", "web_dev", "deep_research", "t2i", "image_edit", "t2v"
+            ] = "t2t",
+            aspect_ratio: Optional[Literal["1:1", "4:3", "3:4", "16:9", "9:16"]] = None,
+            **kwargs
+    ) -> AsyncResult:
+        """
+        chat_type:
+            DeepResearch = "deep_research"
+            Artifacts = "artifacts"
+            WebSearch = "search"
+            ImageGeneration = "t2i"
+            ImageEdit = "image_edit"
+            VideoGeneration = "t2v"
+            Txt2Txt = "t2t"
+            WebDev = "web_dev"
+        """
+        model_name = cls.get_model(model)
+        prompt = get_last_user_message(messages)
+        enable_thinking = reasoning_effort in ("medium", "high")
+        thinking_mode: Literal["Auto", "Thinking", "Fast"] = kwargs.get("thinking_mode",
+                                                                        "Auto" if enable_thinking else "Fast")
+        auto_thinking = thinking_mode == "Auto"
+        timeout = kwargs.get("timeout") or 5 * 60
+        token = kwargs.get("token")
+        async with StreamSession(headers=cls._get_headers(token)) as session:
+            if token:
+                try:
+                    async with session.get('https://chat.qwen.ai/api/v1/auths/', proxy=proxy) as user_info_res:
+                        await cls.raise_for_status(user_info_res)
+                        debug.log(await user_info_res.json())
+                except Exception as e:
+                    debug.error(e)
             for attempt in range(5):
                 try:
-                    if not cls._midtoken:
-                        debug.log("[Qwen] INFO: No active midtoken. Fetching a new one...")
-                        async with session.get('https://sg-wum.alibaba.com/w/wu.json', proxy=proxy) as r:
-                            r.raise_for_status()
-                            text = await r.text()
-                            match = re.search(r"(?:umx\.wu|__fycb)\('([^']+)'\)", text)
-                            if not match:
-                                raise RuntimeError("Failed to extract bx-umidtoken.")
-                            cls._midtoken = match.group(1)
-                            cls._midtoken_uses = 1
-                            debug.log(
-                                f"[Qwen] INFO: New midtoken obtained. Use count: {cls._midtoken_uses}. Midtoken: {cls._midtoken}")
-                    else:
-                        cls._midtoken_uses += 1
-                        debug.log(f"[Qwen] INFO: Reusing midtoken. Use count: {cls._midtoken_uses}")
-
-                    req_headers = session.headers.copy()
-                    req_headers['bx-umidtoken'] = cls._midtoken
-                    req_headers['bx-v'] = '2.5.31'
-                    # req_headers['bx-ua'] = ua
+                    req_headers = await cls._get_req_headers(session, proxy=proxy)
                     message_id = str(uuid.uuid4())
                     if conversation is None:
                         chat_payload = {
                             "title": "New Chat",
                             "models": [model_name],
-                            "chat_mode": "normal",# local
+                            "chat_mode": "normal",
                             "chat_type": chat_type,
                             "timestamp": int(time() * 1000)
                         }
@@ -414,11 +431,26 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
                         files = await cls.prepare_files(media, session=session,
                                                         headers=req_headers)
 
+                    feature_config = {
+                        "auto_thinking": auto_thinking,
+                        "thinking_mode": thinking_mode,
+                        # "thinking_format": "summary",
+                        "thinking_enabled": enable_thinking,
+                        "output_schema": "phase",
+                        # "instructions": None,
+                        "research_mode": "normal",
+                        "auto_search": True
+                    } if enable_thinking else {
+                        "thinking_enabled": enable_thinking,
+                        "output_schema": "phase",
+                        "thinking_budget": 81920
+                    }
+
                     msg_payload = {
                         "stream": stream,
                         "incremental_output": stream,
                         "chat_id": conversation.chat_id,
-                        "chat_mode": "normal",# local
+                        "chat_mode": "normal",
                         "model": model_name,
                         "parent_id": conversation.parent_id,
                         "messages": [
@@ -432,21 +464,12 @@ class Qwen(AsyncGeneratorProvider, ProviderModelMixin):
                                 "files": files,
                                 "models": [model_name],
                                 "chat_type": chat_type,
-                                "feature_config": {
-                                    "thinking_enabled": enable_thinking,
-                                    "output_schema": "phase",
-                                    "thinking_budget": 81920
-                                },
+                                "feature_config": feature_config,
                                 "sub_chat_type": chat_type
                             }
                         ]
                     }
-                    if enable_thinking:
-                        msg_payload["messages"][0]["feature_config"] = {
-                            "thinking_enabled": True,
-                            "output_schema": "phase",
-                            "thinking_budget": 81920
-                        }
+
                     if aspect_ratio:
                         msg_payload["size"] = aspect_ratio
 

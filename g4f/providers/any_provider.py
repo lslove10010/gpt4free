@@ -7,6 +7,7 @@ from ..typing import AsyncResult, Messages, MediaListType, Union
 from ..errors import ModelNotFoundError
 from ..image import is_data_an_audio
 from ..providers.retry_provider import RotatedProvider
+from ..providers.config_provider import RouterConfig, ConfigModelProvider
 from ..Provider.needs_auth import OpenaiChat, CopilotAccount
 from ..Provider.hf_space import HuggingSpace
 from ..Provider import (
@@ -30,6 +31,7 @@ from ..Provider import (
     gTTS,
     MarkItDown,
     OpenAIFM,
+    PollinationsAudio,
 )
 from ..Provider import (
     HuggingFace,
@@ -87,6 +89,7 @@ PROVIDERS_LIST_3 = [
 
 LABELS = {
     "default": "Default",
+    "custom": "Custom Routes",
     "openai": "OpenAI: ChatGPT",
     "llama": "Meta: LLaMA",
     "deepseek": "DeepSeek",
@@ -342,6 +345,8 @@ class AnyModelProviderMixin(ProviderModelMixin):
         # Always add default first
         groups["default"].append("default")
 
+        groups["custom"] = list(RouterConfig.routes.keys())
+
         for model in unsorted_models:
             if model == "default":
                 continue  # Already added
@@ -457,15 +462,21 @@ class AnyProvider(AsyncGeneratorProvider, AnyModelProviderMixin):
             # Tool calling is an API-level feature; routing should be based on model/media.
             if "audio" in kwargs or "audio" in kwargs.get("modalities", []):
                 if kwargs.get("audio", {}).get("language") is None:
-                    providers = [PollinationsAI, OpenAIFM, Gemini]
+                    providers = [PollinationsAudio, OpenAIFM, Gemini]
                 else:
-                    providers = [PollinationsAI, OpenAIFM, EdgeTTS, gTTS]
+                    providers = [PollinationsAudio, OpenAIFM, EdgeTTS, gTTS]
             elif has_audio:
                 providers = [PollinationsAI, Microsoft_Phi_4_Multimodal, MarkItDown]
             elif has_image:
                 providers = models.default_vision.best_provider.providers
             else:
                 providers = models.default.best_provider.providers
+        elif model in RouterConfig.routes:
+            async for chunk in ConfigModelProvider(RouterConfig.routes.get(model)).create_async_generator(
+                model, messages, stream=stream, media=media, api_key=api_key, **kwargs
+            ):
+                yield chunk
+            return
         elif model in Provider.__map__:
             provider = Provider.__map__[model]
             if provider.working and provider.get_parent() not in ignored:
@@ -528,8 +539,6 @@ class AnyProvider(AsyncGeneratorProvider, AnyModelProviderMixin):
             model, messages, stream=stream, media=media, api_key=api_key, **kwargs
         ):
             yield chunk
-
-    async_create_function = create_async_generator
 
 
 # Clean model names function

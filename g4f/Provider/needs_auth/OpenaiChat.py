@@ -16,7 +16,6 @@ from ...requests.curl_cffi import AsyncSession
 
 try:
     import zendriver as nodriver
-
     has_nodriver = True
 except ImportError:
     has_nodriver = False
@@ -116,6 +115,7 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
     model_aliases = model_aliases
     synthesize_content_type = "audio/aac"
     request_config = RequestConfig()
+    quota_url = "https://chatgpt.com/backend-api/me"
 
     _api_key: str = None
     _headers: dict = None
@@ -123,8 +123,24 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
     _expires: int = None
 
     @classmethod
+    async def get_quota(cls, **kwargs):
+        auth = cls.get_auth_result()
+        async with StreamSession(cookies=auth.cookies, headers=auth.headers, impersonate="chrome") as session:
+            async with session.get(cls.quota_url) as response:
+                user = await response.json()
+                return {"id": user.get("id"), "name": user.get("name")}
+
+    @classmethod
+    async def login(cls, **kwargs):
+        cache_file = cls.get_cache_file()
+        async for chunk in cls.on_auth_async(**kwargs):
+            if isinstance(chunk, AuthResult):
+                cls.write_cache_file(cache_file, chunk)
+                return
+
+    @classmethod
     async def on_auth_async(cls, proxy: str = None, **kwargs) -> AsyncIterator:
-        async for chunk in cls.login(proxy=proxy):
+        async for chunk in cls.login_generator(proxy=proxy):
             yield chunk
         yield AuthResult(
             api_key=cls._api_key,
@@ -137,10 +153,10 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
 
     @classmethod
     async def upload_files(
-            cls,
-            session: StreamSession,
-            auth_result: AuthResult,
-            media: MediaListType,
+        cls,
+        session: StreamSession,
+        auth_result: AuthResult,
+        media: MediaListType,
     ) -> List[ImageRequest]:
         """
         Upload an image to the service and get the download URL
@@ -435,7 +451,11 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
                 conversation = copy(conversation)
 
             if conversation_mode is None:
-                conversation_mode = {"kind": "primary_assistant"}
+                _gizmo_id = kwargs.get("gizmo_id")
+                if _gizmo_id:
+                    conversation_mode = {"kind": "gizmo_interaction", "gizmo_id": _gizmo_id}
+                else:
+                    conversation_mode = {"kind": "primary_assistant"}
 
             if getattr(auth_result, "cookies", {}).get("oai-did") != getattr(conversation, "user_id", None):
                 conversation = Conversation(None, str(uuid.uuid4()))
@@ -444,6 +464,11 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
             conversation.finish_reason = None
             sources = OpenAISources([])
             references = ContentReferences()
+            system_hints = ["picture_v2"] if image_model else []
+            if reasoning_effort == "high":
+                system_hints.append("reason")
+            if web_search:
+                system_hints.append("search")
             while conversation.finish_reason is None:
                 conduit_token = None
                 if cls._api_key is not None:
@@ -454,11 +479,8 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
                         "model": model,
                         "timezone_offset_min": -120,
                         "timezone": "Europe/Berlin",
-                        "conversation_mode": {"kind": "primary_assistant"},
-                        "system_hints": [
-                            "picture_v2"
-                        ] if image_model else [],
-                        "thinking_effort": "extended" if reasoning_effort == "high" else "standard",
+                        "conversation_mode": conversation_mode,
+                        "system_hints": system_hints,
                         "supports_buffering": True,
                         "supported_encodings": ["v1"]
                     }
@@ -467,19 +489,19 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
                     if conversation.conversation_id is not None and not temporary:
                         data["conversation_id"] = conversation.conversation_id
                     async with session.post(
-                            prepare_url,
-                            json=data,
-                            headers=cls._headers
+                        prepare_url,
+                        json=data,
+                        headers=cls._headers
                     ) as response:
                         await raise_for_status(response)
                         conduit_token = (await response.json())["conduit_token"]
                 async with session.post(
-                        f"{cls.url}/backend-anon/sentinel/chat-requirements"
-                        if cls._api_key is None else
-                        f"{cls.url}/backend-api/sentinel/chat-requirements",
-                        json={"p": None if not getattr(auth_result, "proof_token", None) else get_requirements_token(
-                            getattr(auth_result, "proof_token", None))},
-                        headers=cls._headers
+                    f"{cls.url}/backend-anon/sentinel/chat-requirements"
+                    if cls._api_key is None else
+                    f"{cls.url}/backend-api/sentinel/chat-requirements",
+                    json={"p": None if not getattr(auth_result, "proof_token", None) else get_requirements_token(
+                        getattr(auth_result, "proof_token", None))},
+                    headers=cls._headers
                 ) as response:
                     if response.status in (401, 403):
                         raise MissingAuthError(f"Response status: {response.status}")
@@ -518,10 +540,9 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
                     "model": model,
                     "timezone_offset_min": -120,
                     "timezone": "Europe/Berlin",
-                    "conversation_mode": {"kind": "primary_assistant"},
+                    "conversation_mode": conversation_mode,
                     "enable_message_followups": True,
-                    "system_hints": ["search"] if web_search else None,
-                    "thinking_effort": "extended" if reasoning_effort == "high" else "standard",
+                    "system_hints": system_hints,
                     "supports_buffering": True,
                     "supported_encodings": ["v1"],
                     "client_contextual_info": {"is_dark_mode": False, "time_since_loaded": random.randint(20, 500),
@@ -564,11 +585,11 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
                 if need_turnstile and getattr(auth_result, "turnstile_token", None) is not None:
                     headers['openai-sentinel-turnstile-token'] = auth_result.turnstile_token
                 async with session.post(
-                        backend_anon_url
-                        if cls._api_key is None else
-                        backend_url,
-                        json=data,
-                        headers=headers
+                    backend_anon_url
+                    if cls._api_key is None else
+                    backend_url,
+                    json=data,
+                    headers=headers
                 ) as response:
                     cls._update_request_args(auth_result, session)
                     if response.status in (401, 403, 429, 500):
@@ -722,19 +743,19 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
 
     @classmethod
     async def wss_media(
-            cls,
-            _session,
-            conversation: Conversation,
-            headers: Dict[str, str],
-            auth_result: AuthResult,
-            timeout: Optional[int] = 20,
+        cls,
+        _session,
+        conversation: Conversation,
+        headers: Dict[str, str],
+        auth_result: AuthResult,
+        timeout: Optional[int] = 20,
     ):
         seen_assets: Set[str] = set()
         async with AsyncSession(
-                timeout=timeout,
-                impersonate="chrome",
-                headers=headers,
-                cookies=auth_result.cookies
+            timeout=timeout,
+            impersonate="chrome",
+            headers=headers,
+            cookies=auth_result.cookies
         ) as session:
             response = await session.get(
                 "https://chatgpt.com/backend-api/celsius/ws/user",
@@ -789,13 +810,13 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
 
     @classmethod
     async def wait_media(
-            cls,
-            session,
-            conversation,
-            headers: Dict[str, str],
-            auth_result: AuthResult,
-            poll_interval: int = 10,
-            timeout: Optional[int] = None,
+        cls,
+        session,
+        conversation,
+        headers: Dict[str, str],
+        auth_result: AuthResult,
+        poll_interval: int = 10,
+        timeout: Optional[int] = None,
     ) -> AsyncGenerator[Any, None]:
         start_time = asyncio.get_event_loop().time()
         seen_assets: Set[str] = set()
@@ -1028,14 +1049,14 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
                     yield chunk
 
     @classmethod
-    async def login(
-            cls,
-            proxy: str = None,
-            api_key: str = None,
-            proof_token: str = None,
-            cookies: Cookies = None,
-            headers: dict = None,
-            **kwargs
+    async def login_generator(
+        cls,
+        proxy: str = None,
+        api_key: str = None,
+        proof_token: str = None,
+        cookies: Cookies = None,
+        headers: dict = None,
+        **kwargs
     ) -> AsyncIterator:
         if cls._expires is not None and (cls._expires - 60 * 10) < time.time():
             cls._headers = cls._api_key = None
@@ -1106,17 +1127,25 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
             for _ in range(3):
                 try:
                     if cls.needs_auth:
-                        await page.select('[data-testid="accounts-profile-button"]', 300)
-                    textarea = await page.select("#prompt-textarea", 300)
-                    await textarea.send_keys("Hello")
-                    await asyncio.sleep(1)
+                        try:
+                            await page.select('[data-testid="accounts-profile-button"]', 300)
+                        except TimeoutError:
+                            continue
+                    try:
+                        textarea = await page.select("#prompt-textarea", 300)
+                        await textarea.send_keys("Hello")
+                        await asyncio.sleep(1)
+                    except TimeoutError:
+                        continue
                 except nodriver.core.connection.ProtocolException:
                     continue
                 break
-            button = await page.select("[data-testid=\"send-button\"]")
-            if button:
+            try:
+                button = await page.select("[data-testid=\"send-button\"]")
                 await button.click()
-            debug.log("OpenaiChat: 'Hello' sended")
+                debug.log("OpenaiChat: 'Hello' sended")
+            except TimeoutError:
+                pass
             while True:
                 body = await page.evaluate("JSON.stringify(window.__remixContext)", return_by_value=True)
                 if hasattr(body, "value"):
@@ -1131,12 +1160,12 @@ class OpenaiChat(AsyncAuthedProvider, ProviderModelMixin):
                 await asyncio.sleep(1)
                 debug.log("OpenaiChat: Waiting for access token...")
             debug.log(f"OpenaiChat: Access token: {'False' if cls._api_key is None else cls._api_key[:12] + '...'}")
-            while True:
-                if cls.request_config.proof_token:
-                    break
-                await asyncio.sleep(1)
-                debug.log("OpenaiChat: Waiting for proof token...")
-            debug.log(f"OpenaiChat: Proof token: Yes")
+            #while True:
+            #    if cls.request_config.proof_token:
+            #        break
+            #    await asyncio.sleep(1)
+            #    debug.log("OpenaiChat: Waiting for proof token...")
+            #debug.log(f"OpenaiChat: Proof token: Yes")
             cls.request_config.data_build = await page.evaluate("document.documentElement.getAttribute('data-build')")
             cls.request_config.cookies = await page.send(get_cookies([cls.url]))
             await page.close()

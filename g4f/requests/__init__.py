@@ -5,6 +5,7 @@ import json
 import os
 import random
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from http.cookies import Morsel
 from pathlib import Path
@@ -90,6 +91,29 @@ def get_cookie_params_from_dict(cookies: Cookies, url: str = None, domain: str =
     }) for key, value in cookies.items()]
 
 
+async def clear_cookies_for_url(browser: Browser, url: str, ignore_cookies: list[str] = None):
+    host = urlparse(url).hostname
+    if not host:
+        raise ValueError(f"Bad url: {url}")
+
+    if ignore_cookies is None:
+        ignore_cookies = []
+    tab = browser.main_tab  # any open tab is fine
+    cookies = await browser.cookies.get_all()  # returns CDP cookies :contentReference[oaicite:2]{index=2}
+    for c in cookies:
+        dom = (c.domain or "").lstrip(".")
+        if dom and (host == dom or host.endswith("." + dom)):
+            if c.name in ignore_cookies:
+                continue
+            await tab.send(
+                nodriver.cdp.network.delete_cookies(
+                    name=c.name,
+                    domain=dom,  # exact domain :contentReference[oaicite:3]{index=3}
+                    path=c.path,  # exact path :contentReference[oaicite:4]{index=4}
+                    # partition_key=c.partition_key,  # if you use partitioned cookies
+                )
+            )
+
 async def get_args_from_nodriver(
     url: str,
     proxy: str = None,
@@ -99,14 +123,21 @@ async def get_args_from_nodriver(
     cookies: Cookies = None,
     browser: Browser = None,
     user_data_dir: str = "nodriver",
-    browser_args: list = None
+    browser_args: list = None,
+    clear_cookies_except:list[str]=None,
 ) -> dict:
+    if clear_cookies_except is None:
+        clear_cookies_except = []
     if browser is None:
         browser, stop_browser = await get_nodriver(proxy=proxy, timeout=timeout, user_data_dir=user_data_dir, browser_args=browser_args)
     else:
         async def stop_browser():
             pass
     try:
+        if clear_cookies_except:
+            debug.log(f"Clear Cookies for url: {url}")
+            await clear_cookies_for_url(browser, url)
+
         debug.log(f"Open nodriver with url: {url}")
         if cookies is None:
             cookies = {}
@@ -121,7 +152,7 @@ async def get_args_from_nodriver(
             await page.wait_for(wait_for, timeout=timeout)
         if callback is not None:
             await callback(page)
-        for c in await page.send(nodriver.cdp.network.get_cookies([url])):
+        for c in await asyncio.wait_for(page.send(nodriver.cdp.network.get_cookies([url])), timeout=timeout):
             cookies[c.name] = c.value
         await stop_browser()
         return {
@@ -161,7 +192,7 @@ async def get_nodriver(
     timeout: int = 300,
     browser_executable_path: str = None,
     **kwargs
-) -> tuple[Browser, callable]:
+) -> tuple[Browser, Callable]:
     if not has_nodriver:
         raise MissingRequirementsError(
             'Install "zendriver" and "platformdirs" package | pip install -U zendriver platformdirs')
@@ -221,12 +252,6 @@ async def get_nodriver(
         )
     except FileNotFoundError as e:
         raise MissingRequirementsError(e)
-    except Exception as e:
-        if util.get_registered_instances():
-            debug.error(e)
-            browser = util.get_registered_instances().pop()
-        else:
-            raise
 
     async def on_stop():
         try:

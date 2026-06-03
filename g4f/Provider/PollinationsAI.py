@@ -30,7 +30,7 @@ from .template.OpenaiTemplate import read_response
 from .. import debug
 
 class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
-    label = "Pollinations AI 🌸"
+    label = "Pollinations 🌸"
     url = "https://pollinations.ai"
     login_url = "https://enter.pollinations.ai"
     active_by_default = True
@@ -41,22 +41,22 @@ class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
     # API endpoints
     text_api_endpoint = "https://text.pollinations.ai/openai"
     image_api_endpoint = "https://image.pollinations.ai/prompt/{}"
+    image_models_endpoint = "https://image.pollinations.ai/models"
     gen_image_api_endpoint = "https://gen.pollinations.ai/image/{}"
     gen_text_api_endpoint = "https://gen.pollinations.ai/v1/chat/completions"
-    image_models_endpoint = "https://gen.pollinations.ai/image/models"
+    gen_image_models_endpoint = "https://gen.pollinations.ai/image/models"
     text_models_endpoint = "https://gen.pollinations.ai/text/models"
-    balance_endpoint = "https://g4f.space/api/pollinations/account/balance"
+    quota_url = "https://g4f.space/api/pollinations/quota"
     worker_api_endpoint = "https://g4f.space/api/pollinations/chat/completions"
     worker_models_endpoint = "https://g4f.space/api/pollinations/models"
 
     # Models configuration
     default_model = "openai-fast"
     fallback_model = "deepseek"
-    default_image_model = "flux"
     default_vision_model = default_model
     default_voice = "alloy"
     text_models = {default_model: {"id": default_model}}
-    image_models = {default_image_model: {"id": default_image_model}, "turbo": {"id": "turbo"}, "kontext": {"id": "kontext"}}
+    image_models = {}
     audio_models = {}
     vision_models = [default_vision_model]
     model_aliases = {
@@ -78,23 +78,14 @@ class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
     current_models_endpoint: Optional[str] = None
 
     @classmethod
-    async def get_quota(cls, api_key: Optional[str] = None, timeout: Optional[float] = None) -> dict:
-        balance = cls.get_balance(api_key, timeout)
-        if balance is not None:
-            return {"balance": balance}
-        return None
-
-    @classmethod
     def get_balance(cls, api_key: Optional[str] = None, timeout: Optional[float] = None) -> Optional[float]:
         try:
-            headers = None
-            if api_key:
-                headers = {"authorization": f"Bearer {api_key}"}
-            response = requests.get(cls.balance_endpoint, headers=headers, timeout=timeout)
+            headers = {"authorization": f"Bearer {api_key}"} if api_key else None
+            response = requests.get(cls.quota_url, headers=headers, timeout=timeout)
             response.raise_for_status()
             data = response.json()
             cls.balance = float(data.get("balance", 0.0))
-            debug.log(f"Pollinations AI balance: {cls.balance:.2f} Pollen")
+            debug.log(f"Pollinations balance: {cls.balance:.2f} Pollen")
             return cls.balance
         except Exception as e:
             debug.error(f"Failed to get balance:", e)
@@ -119,15 +110,18 @@ class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
         if (not api_key or api_key.startswith("g4f_") or api_key.startswith("gfs_")) and cls.balance or cls.balance is None and cls.get_balance(api_key, timeout) and cls.balance > 0:
             debug.log(f"Authenticated with Pollinations AI using G4F API.")
             models_url = cls.worker_models_endpoint
+            image_url = cls.image_models_endpoint
         elif api_key:
             debug.log(f"Using Pollinations AI with provided API key.")
             models_url = cls.gen_text_api_endpoint
+            image_url = cls.gen_image_models_endpoint
         else:
             debug.log(f"Using Pollinations AI without authentication.")
             models_url = cls.text_models_endpoint
+            image_url = cls.image_models_endpoint
 
         if cls.current_models_endpoint != models_url:
-            path = Path(get_cookies_dir()) / "models" / datetime.today().strftime('%Y-%m-%d') / f"{secure_filename(models_url)}.json"
+            path = Path(get_cookies_dir()) / ".models" / datetime.today().strftime('%Y-%m-%d') / f"{secure_filename(models_url)}.json"
             if path.exists():
                 try:
                     data = path.read_text()
@@ -139,7 +133,7 @@ class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
                     debug.error(f"Failed to load cached models from {path}: {e}")
             try:
                 # Update of image models
-                image_response = requests.get(cls.image_models_endpoint, timeout=timeout)
+                image_response = requests.get(image_url, timeout=timeout)
                 if image_response.ok:
                     new_image_models = image_response.json()
                 else:
@@ -147,14 +141,17 @@ class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
 
                 # Add image and video models
                 cls.vision_models = []
-                cls.video_models = [model.get("name") for model in new_image_models if "video" in model.get("output_modalities", [])]
+                cls.video_models = [model.get("name") for model in new_image_models if isinstance(model, dict) and "video" in model.get("output_modalities", [])]
                 for model in new_image_models:
-                    if model.get("name") not in cls.video_models:
-                        cls.image_models[model.get("name")] = {"id": model.get("name"), "label": get_alias(model), **model}
-                    if "image" in model.get("input_modalities", []):
-                        cls.vision_models.append(model.get("name"))
-                    for alias in model.get("aliases", []):
-                        cls.model_aliases[alias] = model.get("name")
+                    if isinstance(model, dict):
+                        if model.get("name") not in cls.video_models:
+                            cls.image_models[model.get("name")] = {"id": model.get("name"), "label": get_alias(model), **model}
+                        if "image" in model.get("input_modalities", []):
+                            cls.vision_models.append(model.get("name"))
+                        for alias in model.get("aliases", []):
+                            cls.model_aliases[alias] = model.get("name")
+                    else:
+                        cls.image_models[model] = {"id": model}
 
                 text_response = requests.get(cls.text_models_endpoint, timeout=timeout)
                 if not text_response.ok:
@@ -180,7 +177,7 @@ class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
                 cls.swap_model_aliases = {v: k for k, v in cls.model_aliases.items()}
                 cls.text_models = {model.get("name"): {"id": model.get("name"), "label": get_alias(model), **model} for model in models}
                 cls.models = cls.text_models.copy()
-                cls.models.update({model.get("name"): {"id": model.get("name"), "label": get_alias(model), **model} for model in new_image_models})
+                cls.models.update(cls.image_models)
             finally:
                 cls.current_models_endpoint = models_url
             # Cache the models to a file
@@ -341,6 +338,8 @@ class PollinationsAI(AsyncGeneratorProvider, ProviderModelMixin):
             "enhance": str(enhance).lower(),
             "safe": str(safe).lower(),
         }
+        if not model or model == "auto":
+            del params["model"]
         if transparent:
             params["transparent"] = "true"
         image = [data for data, _ in media if isinstance(data, str) and data.startswith("http")] if media else []

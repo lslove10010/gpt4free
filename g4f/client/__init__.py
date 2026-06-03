@@ -136,7 +136,7 @@ def iter_response(
     else:
         usage = UsageModel.model_construct(**usage.get_dict())
 
-    finish_reason = "stop" if finish_reason is None else finish_reason
+    finish_reason = "tool_calls" if tool_calls else ("stop" if finish_reason is None else finish_reason)
 
     if stream:
         chat_completion = ChatCompletionChunk.model_construct(
@@ -222,7 +222,7 @@ async def async_iter_response(
             if finish_reason is not None:
                 break
 
-        finish_reason = "stop" if finish_reason is None else finish_reason
+        finish_reason = "tool_calls" if tool_calls else ("stop" if finish_reason is None else finish_reason)
 
         if usage is None:
             usage = UsageModel.model_construct(completion_tokens=idx, total_tokens=idx)
@@ -416,7 +416,7 @@ class Images:
                         break
                 except Exception as e:
                     error = e
-                    debug.error(f"{provider.__name__} {type(e).__name__}: {e}")
+                    debug.error(f"{provider.__name__}:", e)
         else:
             response = await self._generate_image_response(provider_handler, provider_name, model, prompt, proxy=proxy, api_key=api_key, **kwargs)
         if response is None:
@@ -531,7 +531,7 @@ class Images:
                         break
                 except Exception as e:
                     error = e
-                    debug.error(f"{provider.__name__} {type(e).__name__}: {e}")
+                    debug.error(f"{provider.__name__}:", e)
         else:
             response = await self._generate_image_response(provider_handler, provider_name, model, prompt, **kwargs)
         if response is None:

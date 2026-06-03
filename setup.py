@@ -32,7 +32,7 @@ EXTRA_REQUIRE = {
         "flask[async]",            # gui
         "fastapi",                 # api
         "uvicorn",                 # api
-        "nodriver",
+        "zendriver",
         "python-multipart",
         "a2wsgi",
         "setuptools",
@@ -41,7 +41,8 @@ EXTRA_REQUIRE = {
         "aiofile",
         "cloudscraper",
         "wasmtime",
-        "numpy"
+        "numpy",
+        "PyYAML",
     ],
     'slim': [
         "curl_cffi>=0.6.2",
@@ -55,19 +56,20 @@ EXTRA_REQUIRE = {
         "flask[async]",            # gui
         "fastapi",                 # api
         "uvicorn",                 # api
-        "nodriver",
+        "zendriver",
         "python-multipart",
         "a2wsgi",
         "pypdf2",
         "python-docx",
         "python-dotenv",
         "aiofile",
-        "cloudscraper"
+        "cloudscraper",
+        "PyYAML",
     ],
     "image": [
         "pillow",
         "cairosvg",
-        "beautifulsoup4"
+        "beautifulsoup4",
     ],
     "webview": [
         "pywebview",
@@ -80,6 +82,7 @@ EXTRA_REQUIRE = {
         "uvicorn",
         "python-multipart",
         "a2wsgi",
+        "PyYAML"
     ],
     "gui": [
         "werkzeug", "flask[async]",
@@ -95,7 +98,7 @@ EXTRA_REQUIRE = {
     ],
     "files": [
         "beautifulsoup4",
-        "markitdown[all]"
+        "markitdown[all]",
     ]
 }
 
